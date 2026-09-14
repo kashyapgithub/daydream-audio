@@ -1,6 +1,10 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -8,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +35,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -42,9 +48,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -66,15 +75,33 @@ import com.example.ui.theme.raisedGlass
 @Composable
 fun SonicGlassBackground(
     audioRms: Float,
+    spectrum: FloatArray? = null,
     reduceGlass: Boolean,
     reduceMotion: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val animatedRms by animateFloatAsState(
-        targetValue = if (reduceMotion) 0f else audioRms.coerceIn(0f, 0.4f),
-        animationSpec = tween(durationMillis = 150),
+        targetValue = if (reduceMotion) 0f else audioRms.coerceIn(0f, 0.45f),
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
         label = "rms_glow"
+    )
+
+    // PRD 22.7 & 22.12: Ambient tint shifts based on frequency energy (warm for bass, cooler for treble)
+    val isWarmDominant = if (spectrum != null && spectrum.size >= 8) {
+        (spectrum[0] + spectrum[1] + spectrum[2]) >= (spectrum[5] + spectrum[6] + spectrum[7])
+    } else true
+
+    val targetTint = when {
+        reduceMotion || reduceGlass -> Color.Transparent
+        isWarmDominant -> GlassTokens.AccentStart.copy(alpha = 0.16f)
+        else -> Color(0xFF6B4EE6).copy(alpha = 0.14f) // Cooler violet/indigo for airy/crisp audio
+    }
+
+    val ambientTint by animateColorAsState(
+        targetValue = targetTint,
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+        label = "sonic_ambient_tint"
     )
 
     Box(modifier = modifier.fillMaxSize().background(Color(0xFF0C0A14))) {
@@ -89,23 +116,41 @@ fun SonicGlassBackground(
                     .blur(28.dp)
             )
 
-            // Audio-reactive Sonic Glass ripple canvas
+            // Audio-reactive Sonic Glass ripple canvas (PRD 22.7 & 22.12)
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val center = Offset(size.width / 2f, size.height * 0.4f)
-                val rippleRadius = (size.width * 0.45f) + (animatedRms * 350f)
-                val alpha = (0.12f + animatedRms * 0.45f).coerceIn(0f, 0.45f)
+                val center = Offset(size.width / 2f, size.height * 0.38f)
 
+                // 1. Primary transient droplet ripple
+                val rippleRadius1 = (size.width * 0.35f) + (animatedRms * 320f)
+                val alpha1 = (0.14f + animatedRms * 0.50f).coerceIn(0f, 0.55f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            GlassTokens.AccentStart.copy(alpha = alpha),
-                            GlassTokens.AccentEnd.copy(alpha = alpha * 0.4f),
+                            GlassTokens.AccentStart.copy(alpha = alpha1),
+                            ambientTint,
                             Color.Transparent
                         ),
                         center = center,
-                        radius = rippleRadius
+                        radius = rippleRadius1
                     ),
-                    radius = rippleRadius,
+                    radius = rippleRadius1,
+                    center = center
+                )
+
+                // 2. Secondary dissipating outer wave ring
+                val rippleRadius2 = (size.width * 0.60f) + (animatedRms * 480f)
+                val alpha2 = (0.06f + animatedRms * 0.25f).coerceIn(0f, 0.25f)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            ambientTint.copy(alpha = alpha2),
+                            GlassTokens.AccentEnd.copy(alpha = alpha2 * 0.5f),
+                            Color.Transparent
+                        ),
+                        center = center,
+                        radius = rippleRadius2
+                    ),
+                    radius = rippleRadius2,
                     center = center
                 )
             }
@@ -207,15 +252,107 @@ fun LiquidSlider(
             )
         }
 
+        val interactionSource = remember { MutableInteractionSource() }
+        val isDragged by interactionSource.collectIsDraggedAsState()
+        val thumbSize by animateDpAsState(
+            targetValue = if (isDragged) 34.dp else 28.dp,
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
+            label = "liquid_thumb_size"
+        )
+        val thumbScaleY by animateFloatAsState(
+            targetValue = if (isDragged) 0.90f else 1.0f,
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
+            label = "liquid_thumb_squash"
+        )
+
+        @OptIn(ExperimentalMaterial3Api::class)
         Slider(
             value = value,
             onValueChange = onValueChange,
             valueRange = valueRange,
-            colors = SliderDefaults.colors(
-                thumbColor = if (isWarning) GlassTokens.AccentWarning else accentColor,
-                activeTrackColor = if (isWarning) GlassTokens.AccentWarning else accentColor,
-                inactiveTrackColor = Color.White.copy(alpha = 0.12f)
-            ),
+            interactionSource = interactionSource,
+            thumb = {
+                Box(
+                    modifier = Modifier
+                        .size(thumbSize)
+                        .graphicsLayer(scaleY = thumbScaleY)
+                        .clip(CircleShape)
+                        .background(
+                            if (reduceGlass) GlassTokens.SolidCardFill
+                            else GlassTokens.RaisedGlassFill
+                        )
+                        .border(
+                            1.5.dp,
+                            if (isWarning) GlassTokens.AccentWarning
+                            else Color.White.copy(alpha = 0.35f),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.45f),
+                                    Color.White.copy(alpha = 0.10f),
+                                    Color.Transparent
+                                ),
+                                center = Offset(size.width * 0.35f, size.height * 0.35f),
+                                radius = size.width * 0.5f
+                            ),
+                            radius = size.width * 0.45f,
+                            center = Offset(size.width * 0.35f, size.height * 0.35f)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(if (isWarning) GlassTokens.AccentWarning else accentColor)
+                    )
+                }
+            },
+            track = { sliderState ->
+                val range = sliderState.valueRange.endInclusive - sliderState.valueRange.start
+                val fraction = if (range > 0f) {
+                    ((sliderState.value - sliderState.valueRange.start) / range).coerceIn(0f, 1f)
+                } else 0f
+
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(GlassTokens.radiusPill)
+                ) {
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.10f),
+                        cornerRadius = CornerRadius(size.height / 2, size.height / 2)
+                    )
+
+                    val activeWidth = size.width * fraction
+                    if (activeWidth > 0f) {
+                        val trackAlpha = (0.75f + fraction * 0.25f).coerceIn(0.75f, 1.0f)
+                        val gradientColors = if (isWarning) {
+                            listOf(GlassTokens.AccentWarning, GlassTokens.AccentWarning)
+                        } else {
+                            listOf(
+                                GlassTokens.AccentStart.copy(alpha = trackAlpha),
+                                GlassTokens.AccentEnd.copy(alpha = trackAlpha)
+                            )
+                        }
+                        drawRoundRect(
+                            brush = Brush.horizontalGradient(
+                                colors = gradientColors,
+                                startX = 0f,
+                                endX = size.width
+                            ),
+                            size = Size(activeWidth, size.height),
+                            cornerRadius = CornerRadius(size.height / 2, size.height / 2)
+                        )
+                    }
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("slider_${title.lowercase().replace(" ", "_")}")

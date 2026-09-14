@@ -100,7 +100,16 @@ fun Modifier.raisedGlass(reduceGlass: Boolean = false): Modifier {
     } else {
         this.clip(GlassTokens.radiusMd)
             .background(GlassTokens.RaisedGlassFill)
-            .border(1.dp, GlassTokens.RaisedGlassBorder, GlassTokens.radiusMd)
+            .border(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.28f),
+                        Color.White.copy(alpha = 0.15f)
+                    )
+                ),
+                GlassTokens.radiusMd
+            )
     }
 }
 
@@ -112,7 +121,16 @@ fun Modifier.floatingGlass(reduceGlass: Boolean = false): Modifier {
     } else {
         this.clip(GlassTokens.radiusLg)
             .background(GlassTokens.FloatingGlassFill)
-            .border(1.dp, GlassTokens.FloatingGlassBorder, GlassTokens.radiusLg)
+            .border(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.40f),
+                        Color.White.copy(alpha = 0.20f)
+                    )
+                ),
+                GlassTokens.radiusLg
+            )
     }
 }
 

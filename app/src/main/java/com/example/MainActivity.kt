@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -14,16 +17,20 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
@@ -88,6 +95,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 SonicGlassBackground(
                     audioRms = uiState.audioRms,
+                    spectrum = uiState.spectrum,
                     reduceGlass = uiState.reduceGlass,
                     reduceMotion = uiState.reduceMotion
                 ) {
@@ -124,11 +132,12 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
 
-                                // Floating Glass Navigation Tab Bar (PRD 22.11)
+                                // Floating Glass Navigation Tab Bar (PRD 22.5 & 22.11)
                                 FloatingGlassNavBar(
                                     currentTab = uiState.currentTab,
                                     onSelectTab = { viewModel.setTab(it) },
-                                    reduceGlass = uiState.reduceGlass
+                                    reduceGlass = uiState.reduceGlass,
+                                    reduceMotion = uiState.reduceMotion
                                 )
                             }
                         }
@@ -212,27 +221,60 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Bottom Floating Glass Navigation Bar (PRD 22.11)
+ * Bottom Floating Glass Navigation Bar (PRD 22.5 & 22.11)
+ * 64dp height, floating glass elevation, sliding radius-pill indicator with 250ms ease-standard.
  */
 @Composable
 private fun FloatingGlassNavBar(
     currentTab: AppNavTab,
     onSelectTab: (AppNavTab) -> Unit,
     reduceGlass: Boolean = false,
+    reduceMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    val tabs = AppNavTab.entries
+    val selectedIndex = tabs.indexOf(currentTab).coerceAtLeast(0)
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
+            .height(64.dp)
             .floatingGlass(reduceGlass)
-            .padding(horizontal = 6.dp, vertical = 6.dp)
+            .padding(4.dp)
     ) {
+        val tabWidth = maxWidth / tabs.size
+        val animatedIndicatorOffset by animateDpAsState(
+            targetValue = tabWidth * selectedIndex,
+            animationSpec = if (reduceMotion) tween(durationMillis = 0)
+                            else tween(durationMillis = 250, easing = FastOutSlowInEasing),
+            label = "nav_indicator_offset"
+        )
+
+        // Sliding Raised Glass Indicator Pill (PRD 22.5 & 22.11)
+        Box(
+            modifier = Modifier
+                .offset(x = animatedIndicatorOffset)
+                .width(tabWidth)
+                .fillMaxHeight()
+                .padding(horizontal = 3.dp, vertical = 3.dp)
+                .clip(GlassTokens.radiusPill)
+                .background(
+                    if (reduceGlass) GlassTokens.SolidCardFill
+                    else GlassTokens.RaisedGlassFill
+                )
+                .border(
+                    1.dp,
+                    if (reduceGlass) GlassTokens.SolidCardBorder
+                    else GlassTokens.AccentStart.copy(alpha = 0.35f),
+                    GlassTokens.radiusPill
+                )
+        )
+
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround,
+            modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AppNavTab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 val isSelected = currentTab == tab
                 val icon: ImageVector = when (tab) {
                     AppNavTab.RESTORE -> Icons.Default.GraphicEq
@@ -244,13 +286,10 @@ private fun FloatingGlassNavBar(
 
                 Box(
                     modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
                         .clip(GlassTokens.radiusPill)
-                        .background(
-                            if (isSelected) GlassTokens.AccentStart.copy(alpha = 0.22f)
-                            else Color.Transparent
-                        )
                         .clickable { onSelectTab(tab) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
                         .testTag("tab_${tab.name.lowercase()}"),
                     contentAlignment = Alignment.Center
                 ) {
