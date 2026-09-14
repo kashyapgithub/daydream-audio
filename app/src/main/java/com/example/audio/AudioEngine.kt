@@ -256,149 +256,7 @@ class AudioEngine {
 
                 for (i in 0 until BUFFER_SIZE) {
                     val (rawL, rawR) = synthesizeSourceSample(track)
-
-                    var outL: Double
-                    var outR: Double
-
-                    if (isBypassed.get()) {
-                        // Instant Bypass (<50ms A/B testing)
-                        outL = rawL
-                        outR = rawR
-                    } else {
-                        // ==========================================
-                        // STAGE 1: NOISE REDUCTION (PRD 6.10 & 8.1)
-                        // ==========================================
-                        var s1L = rawL
-                        var s1R = rawR
-
-                        if (vintageMode) {
-                            // Reverse Time Machine: Synthesize analog noise + warble with fractional delay line
-                            val (warbledL, warbledR) = applyVintageEffects(s1L, s1R)
-                            s1L = warbledL
-                            s1R = warbledR
-                        } else {
-                            // 1a. Multi-Harmonic De-Hum (50/60Hz + 2 harmonics)
-                            if (deHumEnabled) {
-                                s1L = humNotch3.processL(humNotch2.processL(humNotch1.processL(s1L)))
-                                s1R = humNotch3.processR(humNotch2.processR(humNotch1.processR(s1R)))
-                            }
-
-                            // 1b. Time-domain Derivative De-Crackle (PRD 8.3 click detector)
-                            if (deCrackleEnabled) {
-                                val diffL = abs(s1L - prevSampleL)
-                                val diffR = abs(s1R - prevSampleR)
-                                val spikeThreshold = 0.35 // Transient discontinuity threshold
-
-                                if (diffL > spikeThreshold && abs(prevSampleL) < 0.75) {
-                                    // Interpolate click spike with preceding sample
-                                    s1L = (prevSampleL * 0.7) + (s1L * 0.3)
-                                }
-                                if (diffR > spikeThreshold && abs(prevSampleR) < 0.75) {
-                                    s1R = (prevSampleR * 0.7) + (s1R * 0.3)
-                                }
-                            }
-                            prevSampleL = s1L
-                            prevSampleR = s1R
-
-                            // 1c. Adaptive High-Shelf + Spectral Noise Gate (PRD 8.3)
-                            if (hissRemoval > 0f) {
-                                // Apply high-shelf attenuation above 4.8kHz
-                                s1L = hissHighShelf.processL(s1L)
-                                s1R = hissHighShelf.processR(s1R)
-
-                                // Leaky-integrator envelope follower (1ms attack, 30ms release) avoids zero-crossing distortion
-                                val instAmp = (abs(s1L) + abs(s1R)) * 0.5
-                                val attackCoef = 0.045
-                                val releaseCoef = 0.00075
-                                hissDetectorEnvelope += if (instAmp > hissDetectorEnvelope) {
-                                    attackCoef * (instAmp - hissDetectorEnvelope)
-                                } else {
-                                    releaseCoef * (instAmp - hissDetectorEnvelope)
-                                }
-
-                                // Track noise floor during quieter sections
-                                if (hissDetectorEnvelope < 0.08) {
-                                    noiseFloorEstimate = noiseFloorEstimate * 0.9995 + hissDetectorEnvelope * 0.0005
-                                }
-
-                                // Soft gate when signal falls below estimated noise floor
-                                val gateThreshold = noiseFloorEstimate * (1.0 + (hissRemoval / 100.0) * 2.5)
-                                if (hissDetectorEnvelope < gateThreshold) {
-                                    val gateFactor = (hissDetectorEnvelope / gateThreshold).coerceIn(0.25, 1.0)
-                                    s1L *= gateFactor
-                                    s1R *= gateFactor
-                                }
-                            }
-                        }
-
-                        // ==========================================
-                        // STAGE 2: EQUALIZER (PRD 6.1, 6.2 & 8.1)
-                        // ==========================================
-                        var s2L = s1L
-                        var s2R = s1R
-
-                        if (isAdvancedParametricMode) {
-                            // 10 Independent Parametric Bands with individual Q
-                            parametricFilters.values.forEach { biquad ->
-                                s2L = biquad.processL(s2L)
-                                s2R = biquad.processR(s2R)
-                            }
-                        } else {
-                            // 5 Plain-English Bands
-                            simpleFilters.values.forEach { biquad ->
-                                s2L = biquad.processL(s2L)
-                                s2R = biquad.processR(s2R)
-                            }
-                        }
-
-                        // ==========================================
-                        // STAGE 3: CLARITY MACRO (PRD 6.9 & 8.3)
-                        // 3-Band Crossover + Presence Exciter
-                        // ==========================================
-                        var s3L = s2L
-                        var s3R = s2R
-
-                        if (clarityMacroAmount > 0f) {
-                            val factor = (clarityMacroAmount / 100.0)
-
-                            // 3.5kHz Linkwitz-Riley crossover split
-                            val lowL = crossoverLow.processL(s2L)
-                            val highL = crossoverHigh.processL(s2L)
-
-                            val lowR = crossoverLow.processR(s2R)
-                            val highR = crossoverHigh.processR(s2R)
-
-                            // Add gentle 2nd & 3rd order harmonic saturation to high-mid only
-                            val excitedHighL = highL + factor * 0.18 * tanh(highL * 1.6)
-                            val excitedHighR = highR + factor * 0.18 * tanh(highR * 1.6)
-
-                            // Dynamic de-harsher: attenuate high band if it spikes aggressively
-                            val deHarshL = if (abs(excitedHighL) > 0.6) excitedHighL * 0.85 else excitedHighL
-                            val deHarshR = if (abs(excitedHighR) > 0.6) excitedHighR * 0.85 else excitedHighR
-
-                            s3L = lowL + deHarshL
-                            s3R = lowR + deHarshR
-                        }
-
-                        // ==========================================
-                        // STAGE 4: DYNAMICS COMPRESSOR (PRD 6.8 & 8.3)
-                        // RMS Soft-Knee Compressor
-                        // ==========================================
-                        val (s4L, s4R) = processDynamicsCompressor(s3L, s3R)
-
-                        // ==========================================
-                        // STAGE 5: VIRTUALIZER SPACE (PRD 6.3 & FR-4)
-                        // ==========================================
-                        val (s5L, s5R) = processVirtualizerSpace(s4L, s4R)
-
-                        // ==========================================
-                        // STAGE 6: VOLUME BOOST & LIMITER (PRD 6.6 & FR-5)
-                        // ==========================================
-                        val (s6L, s6R) = processLoudnessAndLimiter(s5L, s5R)
-
-                        outL = s6L
-                        outR = s6R
-                    }
+                    val (outL, outR) = processStereoSample(rawL, rawR)
 
                     // Metrics
                     rmsSum += outL * outL + outR * outR
@@ -406,8 +264,10 @@ class AudioEngine {
                     lSqSum += outL * outL
                     rSqSum += outR * outR
 
-                    val sampleShortL = (outL.coerceIn(-1.0, 1.0) * 32767.0).toInt().toShort()
-                    val sampleShortR = (outR.coerceIn(-1.0, 1.0) * 32767.0).toInt().toShort()
+                    // TPDF Dither before 16-bit integer quantization (PRD 8.4)
+                    val dither = (Random.nextDouble() - Random.nextDouble()) / 32768.0
+                    val sampleShortL = ((outL + dither).coerceIn(-1.0, 1.0) * 32767.0).toInt().toShort()
+                    val sampleShortR = ((outR + dither).coerceIn(-1.0, 1.0) * 32767.0).toInt().toShort()
 
                     pcmBuffer[i * 2] = sampleShortL
                     pcmBuffer[i * 2 + 1] = sampleShortR
@@ -452,6 +312,151 @@ class AudioEngine {
     }
 
     fun isCurrentlyPlaying(): Boolean = isPlaying.get()
+
+    /**
+     * Complete 6-stage PRD 8.1 & 8.3 signal processing pipeline for a stereo sample.
+     * Can be called for live streaming playback, offline file processing (PRD 6.10 Tier 2 / 6.13 / 6.14),
+     * and automated mathematical test assertions.
+     */
+    fun processStereoSample(rawL: Double, rawR: Double): Pair<Double, Double> {
+        if (isBypassed.get()) {
+            // Instant Bypass (<50ms A/B testing, PRD FR-3)
+            return Pair(rawL, rawR)
+        }
+
+        // ==========================================
+        // STAGE 1: NOISE REDUCTION (PRD 6.10 & 8.1)
+        // ==========================================
+        var s1L = rawL
+        var s1R = rawR
+
+        if (vintageMode) {
+            // Reverse Time Machine: Synthesize analog noise + warble with fractional delay line
+            val (warbledL, warbledR) = applyVintageEffects(s1L, s1R)
+            s1L = warbledL
+            s1R = warbledR
+        } else {
+            // 1a. Multi-Harmonic De-Hum (50/60Hz + 2 harmonics)
+            if (deHumEnabled) {
+                s1L = humNotch3.processL(humNotch2.processL(humNotch1.processL(s1L)))
+                s1R = humNotch3.processR(humNotch2.processR(humNotch1.processR(s1R)))
+            }
+
+            // 1b. Time-domain Derivative De-Crackle (PRD 8.3 click detector)
+            if (deCrackleEnabled) {
+                val diffL = abs(s1L - prevSampleL)
+                val diffR = abs(s1R - prevSampleR)
+                val spikeThreshold = 0.35 // Transient discontinuity threshold
+
+                if (diffL > spikeThreshold && abs(prevSampleL) < 0.75) {
+                    // Interpolate click spike with preceding sample
+                    s1L = (prevSampleL * 0.7) + (s1L * 0.3)
+                }
+                if (diffR > spikeThreshold && abs(prevSampleR) < 0.75) {
+                    s1R = (prevSampleR * 0.7) + (s1R * 0.3)
+                }
+            }
+            prevSampleL = s1L
+            prevSampleR = s1R
+
+            // 1c. Adaptive High-Shelf + Spectral Noise Gate (PRD 8.3)
+            if (hissRemoval > 0f) {
+                // Apply high-shelf attenuation above 4.8kHz
+                s1L = hissHighShelf.processL(s1L)
+                s1R = hissHighShelf.processR(s1R)
+
+                // Leaky-integrator envelope follower (1ms attack, 30ms release) avoids zero-crossing distortion
+                val instAmp = (abs(s1L) + abs(s1R)) * 0.5
+                val attackCoef = 0.045
+                val releaseCoef = 0.00075
+                hissDetectorEnvelope += if (instAmp > hissDetectorEnvelope) {
+                    attackCoef * (instAmp - hissDetectorEnvelope)
+                } else {
+                    releaseCoef * (instAmp - hissDetectorEnvelope)
+                }
+
+                // Track noise floor during quieter sections
+                if (hissDetectorEnvelope < 0.08) {
+                    noiseFloorEstimate = noiseFloorEstimate * 0.9995 + hissDetectorEnvelope * 0.0005
+                }
+
+                // Soft gate when signal falls below estimated noise floor
+                val gateThreshold = noiseFloorEstimate * (1.0 + (hissRemoval / 100.0) * 2.5)
+                if (hissDetectorEnvelope < gateThreshold) {
+                    val gateFactor = (hissDetectorEnvelope / gateThreshold).coerceIn(0.25, 1.0)
+                    s1L *= gateFactor
+                    s1R *= gateFactor
+                }
+            }
+        }
+
+        // ==========================================
+        // STAGE 2: EQUALIZER (PRD 6.1, 6.2 & 8.1)
+        // ==========================================
+        var s2L = s1L
+        var s2R = s1R
+
+        if (isAdvancedParametricMode) {
+            // 10 Independent Parametric Bands with individual Q
+            parametricFilters.values.forEach { biquad ->
+                s2L = biquad.processL(s2L)
+                s2R = biquad.processR(s2R)
+            }
+        } else {
+            // 5 Plain-English Bands
+            simpleFilters.values.forEach { biquad ->
+                s2L = biquad.processL(s2L)
+                s2R = biquad.processR(s2R)
+            }
+        }
+
+        // ==========================================
+        // STAGE 3: CLARITY MACRO (PRD 6.9 & 8.3)
+        // 3-Band Crossover + Presence Exciter
+        // ==========================================
+        var s3L = s2L
+        var s3R = s2R
+
+        if (clarityMacroAmount > 0f) {
+            val factor = (clarityMacroAmount / 100.0)
+
+            // 3.5kHz Linkwitz-Riley crossover split
+            val lowL = crossoverLow.processL(s2L)
+            val highL = crossoverHigh.processL(s2L)
+
+            val lowR = crossoverLow.processR(s2R)
+            val highR = crossoverHigh.processR(s2R)
+
+            // Add gentle 2nd & 3rd order harmonic saturation to high-mid only
+            val excitedHighL = highL + factor * 0.18 * tanh(highL * 1.6)
+            val excitedHighR = highR + factor * 0.18 * tanh(highR * 1.6)
+
+            // Dynamic de-harsher: attenuate high band if it spikes aggressively
+            val deHarshL = if (abs(excitedHighL) > 0.6) excitedHighL * 0.85 else excitedHighL
+            val deHarshR = if (abs(excitedHighR) > 0.6) excitedHighR * 0.85 else excitedHighR
+
+            s3L = lowL + deHarshL
+            s3R = lowR + deHarshR
+        }
+
+        // ==========================================
+        // STAGE 4: DYNAMICS COMPRESSOR (PRD 6.8 & 8.3)
+        // RMS Soft-Knee Compressor
+        // ==========================================
+        val (s4L, s4R) = processDynamicsCompressor(s3L, s3R)
+
+        // ==========================================
+        // STAGE 5: VIRTUALIZER SPACE (PRD 6.3 & FR-4)
+        // ==========================================
+        val (s5L, s5R) = processVirtualizerSpace(s4L, s4R)
+
+        // ==========================================
+        // STAGE 6: VOLUME BOOST & LIMITER (PRD 6.6 & FR-5)
+        // ==========================================
+        val (s6L, s6R) = processLoudnessAndLimiter(s5L, s5R)
+
+        return Pair(s6L, s6R)
+    }
 
     private fun processDynamicsCompressor(inL: Double, inR: Double): Pair<Double, Double> {
         // RMS-based power detector (PRD 8.3: RMS, not pure peak)
@@ -595,7 +600,11 @@ class AudioEngine {
         val tapeHissR = (Random.nextDouble() - 0.5) * noiseAmp
         val vinylPop = if (Random.nextDouble() < (vintageNoiseLevel / 15000.0)) (Random.nextDouble() - 0.5) * 0.45 else 0.0
 
-        return Pair(warbledL + tapeHissL + vinylPop, warbledR + tapeHissR + vinylPop)
+        // Mains hum synthesis at 50/60Hz + 2nd harmonic (PRD 6.13 & 8.3)
+        val humPhase = lfoPhase * (humFrequency / 1.2)
+        val mainsHum = (sin(humPhase) * 0.015 + sin(humPhase * 2.0) * 0.005) * (vintageNoiseLevel / 100.0)
+
+        return Pair(warbledL + tapeHissL + vinylPop + mainsHum, warbledR + tapeHissR + vinylPop + mainsHum)
     }
 
     private fun synthesizeSourceSample(track: DemoTrack): Pair<Double, Double> {
@@ -631,7 +640,7 @@ class AudioEngine {
         return Pair(left, right)
     }
 
-    private fun updateDspCoefficients() {
+    fun updateDspCoefficients() {
         // 1. Simple 5-Band Peaking & Shelving Filters (PRD 8.3)
         eqGains.forEach { (band, gainDb) ->
             val biquad = simpleFilters[band] ?: return@forEach

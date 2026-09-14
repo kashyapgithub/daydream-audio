@@ -516,6 +516,51 @@ fun SimpleModeScreen(
                             }
                         }
                     }
+
+                    // Regional Mains Frequency Selector (PRD 8.3)
+                    AnimatedVisibility(visible = uiState.deHumEnabled) {
+                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                            Text(
+                                text = "Mains Frequency Notch",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = GlassTokens.TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(50 to "50Hz (EU/Asia/UK)", 60 to "60Hz (US/Americas)").forEach { (freq, label) ->
+                                    val isSelected = uiState.humFrequency == freq
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(GlassTokens.radiusSm)
+                                            .background(
+                                                if (isSelected) GlassTokens.AccentStart.copy(alpha = 0.22f)
+                                                else Color.White.copy(alpha = 0.05f)
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) GlassTokens.AccentStart else Color.White.copy(alpha = 0.10f),
+                                                GlassTokens.radiusSm
+                                            )
+                                            .clickable { viewModel.setHumFrequency(freq) }
+                                            .padding(vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
