@@ -97,6 +97,7 @@ class AudioEngine {
 
     // Playback Tempo (0.5x to 1.5x, API 23+ PlaybackParams time-stretching)
     var playbackSpeed: Float = 1.0f
+        private set
 
     // Vintage-ify mode (PRD 6.13)
     var vintageMode: Boolean = false
