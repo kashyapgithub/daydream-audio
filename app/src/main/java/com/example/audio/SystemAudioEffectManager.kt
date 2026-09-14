@@ -98,7 +98,7 @@ class SystemAudioEffectManager private constructor() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 try {
                     val configBuilder = DynamicsProcessing.Config.Builder(
-                        DynamicsProcessing.CONFIG_DEFAULT,
+                        DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                         2, // channels
                         true, // eq in
                         5,    // eq in bands

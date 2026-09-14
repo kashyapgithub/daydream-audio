@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GraphicEq
@@ -178,7 +177,7 @@ private fun OnboardingWelcomeStep(onNext: () -> Unit) {
                         color = Color.White
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Icon(imageVector = Icons.Default.ArrowForward, contentDescription = null, tint = Color.White)
+                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
                 }
             }
         }
@@ -263,7 +262,7 @@ private fun OnboardingDeviceStep(
                         color = Color.White
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Icon(imageVector = Icons.Default.ArrowForward, contentDescription = null, tint = Color.White)
+                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
                 }
             }
         }

@@ -410,7 +410,7 @@ class AudioEngine {
             audioTrack?.flush()
             audioTrack?.stop()
             audioTrack?.release()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
         audioTrack = null
     }
 
