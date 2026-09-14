@@ -106,10 +106,10 @@ class AudioEngineTest {
         // Test 60Hz fundamental attenuation
         val dt60 = 2.0 * PI * 60.0 / AudioEngine.SAMPLE_RATE
         var steadyHumOut = 0.0
-        for (i in 0 until 2000) {
+        for (i in 0 until 10000) {
             val s = sin(i * dt60) * 0.5
             val (outL, _) = engine.processStereoSample(s, s)
-            if (i > 1500) {
+            if (i > 8000) {
                 steadyHumOut = maxOf(steadyHumOut, abs(outL))
             }
         }
@@ -117,16 +117,16 @@ class AudioEngineTest {
         // Test 1000Hz reference frequency (should pass through unattenuated)
         val dt1k = 2.0 * PI * 1000.0 / AudioEngine.SAMPLE_RATE
         var steady1kOut = 0.0
-        for (i in 0 until 2000) {
+        for (i in 0 until 10000) {
             val s = sin(i * dt1k) * 0.5
             val (outL, _) = engine.processStereoSample(s, s)
-            if (i > 1500) {
+            if (i > 8000) {
                 steady1kOut = maxOf(steady1kOut, abs(outL))
             }
         }
 
         // The 60Hz notch should significantly attenuate 60Hz compared to 1000Hz
-        assertTrue("60Hz hum should be heavily notched ($steadyHumOut vs $steady1kOut)", steadyHumOut < steady1kOut * 0.4)
+        assertTrue("60Hz hum should be heavily notched ($steadyHumOut vs $steady1kOut)", steadyHumOut < steady1kOut * 0.1)
     }
 
     @Test

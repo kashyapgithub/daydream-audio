@@ -559,13 +559,16 @@ class AudioEngine {
 
         // True-Peak Soft Brickwall Limiter (PRD 6.6, 8.3 & FR-5)
         val ceiling = 10.0.pow(limiterCeilingDb / 20.0).coerceIn(0.70, 0.98)
-        if (abs(boostedL) > ceiling) {
+        val knee = ceiling * 0.85
+        if (abs(boostedL) > knee) {
             val sign = if (boostedL >= 0) 1.0 else -1.0
-            boostedL = sign * (ceiling + (1.0 - ceiling) * tanh((abs(boostedL) - ceiling) / (1.0 - ceiling)))
+            val diff = abs(boostedL) - knee
+            boostedL = sign * (knee + (ceiling - knee) * tanh(diff / (ceiling - knee)))
         }
-        if (abs(boostedR) > ceiling) {
+        if (abs(boostedR) > knee) {
             val sign = if (boostedR >= 0) 1.0 else -1.0
-            boostedR = sign * (ceiling + (1.0 - ceiling) * tanh((abs(boostedR) - ceiling) / (1.0 - ceiling)))
+            val diff = abs(boostedR) - knee
+            boostedR = sign * (knee + (ceiling - knee) * tanh(diff / (ceiling - knee)))
         }
 
         return Pair(boostedL, boostedR)
@@ -670,9 +673,9 @@ class AudioEngine {
         }
 
         // 3. Multi-Harmonic De-Hum Notches (50/60Hz + 2nd and 3rd harmonics)
-        calculateNotch(humNotch1, humFrequency.toDouble(), 18.0)
-        calculateNotch(humNotch2, (humFrequency * 2).toDouble(), 18.0)
-        calculateNotch(humNotch3, (humFrequency * 3).toDouble(), 18.0)
+        calculateNotch(humNotch1, humFrequency.toDouble(), 12.0)
+        calculateNotch(humNotch2, (humFrequency * 2).toDouble(), 12.0)
+        calculateNotch(humNotch3, (humFrequency * 3).toDouble(), 12.0)
 
         // 4. Hiss High Shelf Filter (starts above 4.5kHz)
         val hissCutDb = -(hissRemoval / 100.0 * 20.0) // 0 to -20dB cut
