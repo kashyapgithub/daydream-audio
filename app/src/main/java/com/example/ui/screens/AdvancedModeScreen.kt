@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,12 +17,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -273,11 +280,53 @@ fun AdvancedModeScreen(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Spatial Room Simulation (PRD 6.7a)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    Text(
+                        text = "Simulates early room reflections and acoustic environment",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Natural", "Intimate Studio", "Concert Hall", "Cathedral").forEach { room ->
+                            val isSelected = uiState.spatialRoomType == room
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(GlassTokens.radiusPill)
+                                    .background(
+                                        if (isSelected) GlassTokens.AccentStart
+                                        else Color.White.copy(alpha = 0.08f)
+                                    )
+                                    .clickable { viewModel.setSpatialRoomType(room) }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = room.replace("Intimate ", "").replace("Concert ", ""),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.White else GlassTokens.TextSecondary
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // Preset Export / Share (PRD 6.2 & FR-12)
+        // Preset Export / Import (PRD 6.2 & FR-12)
         item {
             Box(
                 modifier = Modifier
@@ -285,43 +334,179 @@ fun AdvancedModeScreen(
                     .raisedGlass(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Preset Management (FR-12)",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "Share and import complete 6-stage chain presets as JSON",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val json = viewModel.exportCurrentPresetJson()
+                                clipboardManager.setText(AnnotatedString(json))
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                            shape = GlassTokens.radiusPill,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Export JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { viewModel.openImportPresetDialog() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
+                            shape = GlassTokens.radiusPill,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Import JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Import Preset Dialog Modal (PRD FR-12)
+    if (uiState.showImportPresetDialog) {
+        var jsonInput by remember { mutableStateOf("") }
+        var importError by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { viewModel.closeImportPresetDialog() },
+            title = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Export Preset Bundle",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GlassTokens.TextPrimary
+                    Text(
+                        text = "Import Preset (JSON)",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    IconButton(onClick = { viewModel.closeImportPresetDialog() }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
+                    }
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Paste a saved Daydream Audio JSON preset bundle below to restore the exact 6-stage chain:",
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = jsonInput,
+                        onValueChange = {
+                            jsonInput = it
+                            importError = null
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        placeholder = { Text("{ \"version\": 1, ... }", fontSize = 12.sp, color = GlassTokens.TextMuted) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = GlassTokens.TextPrimary),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFF141220),
+                            unfocusedContainerColor = Color(0xFF141220),
+                            focusedIndicatorColor = GlassTokens.AccentStart,
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.2f)
                         )
+                    )
+
+                    if (importError != null) {
                         Text(
-                            text = "Save full 6-stage chain configuration as shareable JSON",
-                            fontSize = 12.sp,
-                            color = GlassTokens.TextSecondary
+                            text = importError!!,
+                            fontSize = 11.sp,
+                            color = GlassTokens.AccentWarning,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
 
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Button(
                         onClick = {
-                            val json = viewModel.exportCurrentPresetJson()
-                            clipboardManager.setText(AnnotatedString(json))
+                            val clip = clipboardManager.getText()?.text
+                            if (!clip.isNullOrBlank()) {
+                                jsonInput = clip
+                            }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
-                        shape = GlassTokens.radiusPill
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.10f)),
+                        shape = GlassTokens.radiusPill,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Copy JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Paste From Clipboard", fontSize = 12.sp, color = GlassTokens.AccentStart)
                     }
                 }
-            }
-        }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (jsonInput.isBlank()) {
+                            importError = "Please paste a JSON preset"
+                            return@Button
+                        }
+                        val success = viewModel.importPresetJson(jsonInput)
+                        if (success) {
+                            viewModel.closeImportPresetDialog()
+                        } else {
+                            importError = "Invalid preset format. Check JSON syntax."
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                    shape = GlassTokens.radiusPill
+                ) {
+                    Text("Apply Preset", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { viewModel.closeImportPresetDialog() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
+                ) {
+                    Text("Cancel", color = GlassTokens.TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF191626),
+            shape = GlassTokens.radiusLg
+        )
     }
 }

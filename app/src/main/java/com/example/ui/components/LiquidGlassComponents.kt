@@ -8,9 +8,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -198,12 +200,15 @@ fun LiquidSlider(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            @OptIn(ExperimentalFoundationApi::class)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable(
-                    enabled = onInfoClick != null,
-                    onClick = { onInfoClick?.invoke() }
-                )
+                modifier = if (onInfoClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { onInfoClick() },
+                        onLongClick = { onInfoClick() }
+                    )
+                } else Modifier
             ) {
                 Text(
                     text = title,
@@ -215,7 +220,7 @@ fun LiquidSlider(
                     Spacer(modifier = Modifier.width(6.dp))
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "Info on $title",
+                        contentDescription = "Info on $title (tap or long-press)",
                         tint = GlassTokens.TextMuted,
                         modifier = Modifier.size(16.dp)
                     )
@@ -272,11 +277,20 @@ fun LiquidSlider(
             valueRange = valueRange,
             interactionSource = interactionSource,
             thumb = {
+                @OptIn(ExperimentalFoundationApi::class)
                 Box(
                     modifier = Modifier
                         .size(thumbSize)
                         .graphicsLayer(scaleY = thumbScaleY)
                         .clip(CircleShape)
+                        .then(
+                            if (onInfoClick != null) {
+                                Modifier.combinedClickable(
+                                    onClick = {},
+                                    onLongClick = { onInfoClick() }
+                                )
+                            } else Modifier
+                        )
                         .background(
                             if (reduceGlass) GlassTokens.SolidCardFill
                             else GlassTokens.RaisedGlassFill

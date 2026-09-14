@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -179,6 +181,43 @@ fun GoldenEarScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
+                        // PRD §22.7 & §22.8: Sonic Glass Visual Hint Layer toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(GlassTokens.radiusMd)
+                                .background(Color.White.copy(alpha = 0.05f))
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Sonic Glass Visual Hint",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GlassTokens.TextPrimary
+                                )
+                                Text(
+                                    text = "Subtle reactive ambient glow on target band (PRD §22.7)",
+                                    fontSize = 10.sp,
+                                    color = GlassTokens.TextSecondary
+                                )
+                            }
+                            Switch(
+                                checked = uiState.showSonicHintInEarTrainer,
+                                onCheckedChange = { viewModel.toggleSonicHintInEarTrainer() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = GlassTokens.AccentStart,
+                                    uncheckedThumbColor = GlassTokens.TextMuted,
+                                    uncheckedTrackColor = Color.White.copy(alpha = 0.12f)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
                         Text(
                             text = "Which plain-language band was boosted or cut?",
                             fontSize = 14.sp,
@@ -190,13 +229,22 @@ fun GoldenEarScreen(
 
                         // Band Guess Buttons
                         PlainBand.entries.forEach { band ->
+                            val isHinted = uiState.showSonicHintInEarTrainer && challenge.targetBand == band
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
                                     .clip(GlassTokens.radiusMd)
-                                    .background(Color.White.copy(alpha = 0.08f))
-                                    .border(1.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusMd)
+                                    .background(
+                                        if (isHinted) GlassTokens.AccentStart.copy(alpha = 0.22f)
+                                        else Color.White.copy(alpha = 0.08f)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isHinted) GlassTokens.AccentStart.copy(alpha = 0.7f)
+                                        else Color.White.copy(alpha = 0.15f),
+                                        GlassTokens.radiusMd
+                                    )
                                     .clickable { viewModel.submitEarGuess(band) }
                                     .padding(horizontal = 16.dp, vertical = 12.dp)
                                     .testTag("guess_button_${band.name.lowercase()}")
@@ -207,12 +255,22 @@ fun GoldenEarScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text(
-                                            text = band.title,
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = GlassTokens.TextPrimary
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = band.title,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isHinted) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                            )
+                                            if (isHinted) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "●",
+                                                    fontSize = 10.sp,
+                                                    color = GlassTokens.AccentStart
+                                                )
+                                            }
+                                        }
                                         Text(
                                             text = band.frequencyRange,
                                             fontSize = 11.sp,

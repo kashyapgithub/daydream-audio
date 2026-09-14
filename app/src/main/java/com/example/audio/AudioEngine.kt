@@ -73,6 +73,7 @@ class AudioEngine {
     var deHumEnabled: Boolean = false
     var humFrequency: Int = 60 // 50Hz or 60Hz mains
     var deCrackleEnabled: Boolean = false
+    var spatialRoomType: String = "Natural" // "Natural", "Intimate Studio", "Concert Hall", "Cathedral" (PRD 6.7a)
 
     // Advanced Compressor Parameters
     var compThresholdDb: Float = -18f
@@ -473,14 +474,26 @@ class AudioEngine {
         delayBufferR[delayWriteIndex] = inR
         delayWriteIndex = (delayWriteIndex + 1) % delayBufferSize
 
-        // ~8ms cross-feed delay (350 samples)
+        // Delay offset and reflection intensity based on Static Spatial Room Simulation (PRD 6.7a)
+        val (delayOffset, reflectionCoeff) = when (spatialRoomType) {
+            "Intimate Studio" -> Pair(530, 0.22) // ~12ms studio reflection
+            "Concert Hall" -> Pair(1060, 0.35)   // ~24ms hall reflection
+            "Cathedral" -> Pair(1550, 0.45)      // ~35ms cathedral space
+            else -> Pair(350, 0.0)               // ~8ms standard HRTF crossfeed
+        }
+
         val readIndex = (delayWriteIndex - 350 + delayBufferSize) % delayBufferSize
         val delayedL = delayBufferL[readIndex]
         val delayedR = delayBufferR[readIndex]
 
-        // Transaural crossfeed decorrelation
-        val outL = inL + (delayedR - inR) * (widthFactor * 0.45)
-        val outR = inR + (delayedL - inL) * (widthFactor * 0.45)
+        // Room reflection tap
+        val roomReadIndex = (delayWriteIndex - delayOffset + delayBufferSize) % delayBufferSize
+        val roomL = delayBufferL[roomReadIndex] * reflectionCoeff * widthFactor
+        val roomR = delayBufferR[roomReadIndex] * reflectionCoeff * widthFactor
+
+        // Transaural crossfeed decorrelation + early room simulation
+        val outL = inL + (delayedR - inR) * (widthFactor * 0.45) + roomL
+        val outR = inR + (delayedL - inL) * (widthFactor * 0.45) + roomR
 
         return Pair(outL, outR)
     }

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,11 +22,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -33,6 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -180,14 +189,35 @@ fun TimeMachineScreen(
             }
         }
 
-        // Section 2: Time Machine Era Presets (PRD 6.11)
+        // Section 2: Time Machine Era Presets & Memory Postcard (PRD 6.11 & 6.14)
         item {
-            Text(
-                text = "Historical Era Presets",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                color = GlassTokens.TextPrimary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Historical Era Presets",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextPrimary
+                )
+
+                Button(
+                    onClick = { viewModel.openMemoryPostcardDialog() },
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                    shape = GlassTokens.radiusPill,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Share Postcard", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
 
         items(viewModel.timeMachinePresets) { preset ->
@@ -280,6 +310,199 @@ fun TimeMachineScreen(
             }
         }
     }
+
+    if (uiState.showMemoryPostcardDialog) {
+        MemoryPostcardDialog(
+            uiState = uiState,
+            onDismiss = { viewModel.closeMemoryPostcardDialog() }
+        )
+    }
+}
+
+@Composable
+fun MemoryPostcardDialog(
+    uiState: DaydreamUiState,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val activePresetName = uiState.activePresetId?.let { id ->
+        when (id) {
+            "70s_vinyl" -> "1970s Warm Vinyl"
+            "80s_cassette" -> "1980s Type II Cassette"
+            "90s_broadcast" -> "1990s FM Broadcast"
+            "00s_early_mp3" -> "2000s 128kbps MP3"
+            else -> id.replace("_", " ").replaceFirstChar { it.uppercase() }
+        }
+    } ?: if (uiState.vintageModeEnabled) "Vintage-ify Acoustic Profile" else "Time Machine Master"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = {
+                    val shareText = "🎧 Listening with Daydream Audio Time Machine ($activePresetName)\n" +
+                            "Warmth: ${uiState.vintageWarmth.toInt()}% | Saturation: ${uiState.vintageTapeSaturation.toInt()}%\n" +
+                            "✨ Enhanced with Daydream Audio's Liquid Glass DSP engine"
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, shareText)
+                        type = "text/plain"
+                    }
+                    context.startActivity(Intent.createChooser(sendIntent, "Share Memory Postcard"))
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                shape = GlassTokens.radiusPill
+            ) {
+                Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Share to Stories / WhatsApp", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            IconButton(onClick = onDismiss) {
+                Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
+            }
+        },
+        containerColor = GlassTokens.BackgroundDark,
+        title = {
+            Text(
+                text = "Memory Postcard Export",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = GlassTokens.TextPrimary
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(GlassTokens.radiusLg)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                GlassTokens.SurfaceGlassRaised,
+                                GlassTokens.SurfaceGlass
+                            )
+                        )
+                    )
+                    .border(1.dp, GlassTokens.BorderGlass, GlassTokens.radiusLg)
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterVertically
+            ) {
+                // Postcard Preview Card (9:16 aspect feel)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(GlassTokens.radiusMd)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFF1E1035),
+                                    Color(0xFF0F0A1C),
+                                    Color(0xFF05050A)
+                                )
+                            )
+                        )
+                        .border(1.dp, GlassTokens.AccentStart.copy(alpha = 0.4f), GlassTokens.radiusMd)
+                        .padding(20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Top badge
+                        Box(
+                            modifier = Modifier
+                                .clip(GlassTokens.radiusPill)
+                                .background(GlassTokens.AccentStart.copy(alpha = 0.2f))
+                                .border(1.dp, GlassTokens.AccentStart.copy(alpha = 0.5f), GlassTokens.radiusPill)
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "DAYDREAM TIME MACHINE",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.AccentStart,
+                                letterSpacing = 1.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Icon(
+                            imageVector = Icons.Default.Radio,
+                            contentDescription = null,
+                            tint = GlassTokens.AccentEnd,
+                            modifier = Modifier.size(48.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = activePresetName,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.TextPrimary
+                        )
+
+                        Text(
+                            text = "Acoustic Medium Emulation",
+                            fontSize = 12.sp,
+                            color = GlassTokens.TextSecondary
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Waveform simulation bars
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val barHeights = listOf(14.dp, 28.dp, 20.dp, 36.dp, 44.dp, 30.dp, 22.dp, 38.dp, 16.dp, 26.dp)
+                            barHeights.forEach { h ->
+                                Box(
+                                    modifier = Modifier
+                                        .width(5.dp)
+                                        .height(h)
+                                        .clip(GlassTokens.radiusPill)
+                                        .background(GlassTokens.AccentStart)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            PresetBadge(text = "Warmth: ${uiState.vintageWarmth.toInt()}%")
+                            PresetBadge(text = "Sat: ${uiState.vintageTapeSaturation.toInt()}%")
+                            PresetBadge(text = "Crackle: ${uiState.vintageNoiseLevel.toInt()}%")
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // PRD §6.14: subtle, non-intrusive "Made with Daydream Audio" watermark
+                        Text(
+                            text = "✨ Made with Daydream Audio ✨",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = GlassTokens.TextMuted
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Ready to share with friends on WhatsApp Status, Instagram Stories, or Reels.",
+                    fontSize = 12.sp,
+                    color = GlassTokens.TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    )
 }
 
 @Composable

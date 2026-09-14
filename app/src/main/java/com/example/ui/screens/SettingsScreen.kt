@@ -298,6 +298,19 @@ fun SettingsScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Legacy Mode Fallback Toggle (PRD §9.0 & FR-11)
+                    SettingToggleRow(
+                        title = "Legacy Mode (In-App Player)",
+                        description = "Bypasses system-wide broadcast receiver and routes playback through in-app engine. Recommended for aggressive OEM battery savers (MIUI, OneUI, ColorOS) that suppress audio session broadcasts.",
+                        checked = uiState.isLegacyMode,
+                        onCheckedChange = { viewModel.toggleLegacyMode() },
+                        testTag = "setting_legacy_mode"
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     val stages = listOf(
                         "1. Noise Reduction (Adaptive High-Shelf Gate, Multi-Harmonic De-Hum, Derivative Spike De-Crackle)",
                         "2. Equalizer (5-Band Peaking & Shelving IIR / 10-Band Parametric EQ)",

@@ -116,7 +116,20 @@ data class DaydreamUiState(
     val reduceGlass: Boolean = false,
     val reduceMotion: Boolean = false,
     val activeTooltipBand: PlainBand? = null,
-    val notificationMessage: String? = null
+    val notificationMessage: String? = null,
+
+    // Legacy Mode & Fallback (PRD 9.0 & FR-11)
+    val isLegacyMode: Boolean = false,
+
+    // Static Spatial Room Simulation (PRD 6.7a)
+    val spatialRoomType: String = "Natural", // "Natural", "Intimate Studio", "Concert Hall", "Cathedral"
+
+    // Golden Ear Trainer Sonic Glass Hint Layer (PRD 22.7 & 22.8)
+    val showSonicHintInEarTrainer: Boolean = false,
+
+    // Dialog Visibility
+    val showImportPresetDialog: Boolean = false,
+    val showMemoryPostcardDialog: Boolean = false
 )
 
 class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
@@ -755,6 +768,46 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
 
     fun clearNotification() {
         _uiState.update { it.copy(notificationMessage = null) }
+    }
+
+    fun toggleLegacyMode() {
+        val newMode = !_uiState.value.isLegacyMode
+        _uiState.update {
+            it.copy(
+                isLegacyMode = newMode,
+                notificationMessage = if (newMode) "Legacy Mode: In-App Player active (OEM fallback)" else "Global System Audio Hooking active"
+            )
+        }
+    }
+
+    fun setSpatialRoomType(roomType: String) {
+        audioEngine.spatialRoomType = roomType
+        _uiState.update {
+            it.copy(
+                spatialRoomType = roomType,
+                notificationMessage = "Spatial Room Simulation: $roomType"
+            )
+        }
+    }
+
+    fun toggleSonicHintInEarTrainer() {
+        _uiState.update { it.copy(showSonicHintInEarTrainer = !it.showSonicHintInEarTrainer) }
+    }
+
+    fun openImportPresetDialog() {
+        _uiState.update { it.copy(showImportPresetDialog = true) }
+    }
+
+    fun closeImportPresetDialog() {
+        _uiState.update { it.copy(showImportPresetDialog = false) }
+    }
+
+    fun openMemoryPostcardDialog() {
+        _uiState.update { it.copy(showMemoryPostcardDialog = true) }
+    }
+
+    fun closeMemoryPostcardDialog() {
+        _uiState.update { it.copy(showMemoryPostcardDialog = false) }
     }
 
     private fun syncAllEngineParameters() {

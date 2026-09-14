@@ -139,20 +139,27 @@ fun SimpleModeScreen(
                     )
                 }
 
-                // System Audio Session Hook Status (PRD 8.0 & 12.1)
+                // System Audio Session Hook Status or Legacy Mode (PRD 8.0, 9.0 & FR-11)
                 Row(
                     modifier = Modifier
                         .clip(GlassTokens.radiusPill)
                         .background(
-                            if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe.copy(alpha = 0.15f)
-                            else Color.White.copy(alpha = 0.08f)
+                            when {
+                                uiState.isLegacyMode -> GlassTokens.AccentStart.copy(alpha = 0.18f)
+                                uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe.copy(alpha = 0.15f)
+                                else -> Color.White.copy(alpha = 0.08f)
+                            }
                         )
                         .border(
                             1.dp,
-                            if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe.copy(alpha = 0.5f)
-                            else Color.White.copy(alpha = 0.15f),
+                            when {
+                                uiState.isLegacyMode -> GlassTokens.AccentStart.copy(alpha = 0.6f)
+                                uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe.copy(alpha = 0.5f)
+                                else -> Color.White.copy(alpha = 0.15f)
+                            },
                             GlassTokens.radiusPill
                         )
+                        .clickable { viewModel.toggleLegacyMode() }
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -160,19 +167,71 @@ fun SimpleModeScreen(
                         modifier = Modifier
                             .size(8.dp)
                             .clip(GlassTokens.radiusPill)
-                            .background(if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe else Color.White.copy(alpha = 0.4f))
+                            .background(
+                                when {
+                                    uiState.isLegacyMode -> GlassTokens.AccentStart
+                                    uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe
+                                    else -> Color.White.copy(alpha = 0.4f)
+                                }
+                            )
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (uiState.activeSystemSessions.isNotEmpty()) {
-                            "Hooked: ${uiState.activeSystemSessions.first()}"
-                        } else {
-                            "System Audio: Listening"
+                        text = when {
+                            uiState.isLegacyMode -> "Legacy Mode (In-App Player)"
+                            uiState.activeSystemSessions.isNotEmpty() -> "Hooked: ${uiState.activeSystemSessions.first()}"
+                            else -> "System Audio: Listening"
                         },
                         fontSize = 12.sp,
-                        color = if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe else GlassTokens.TextSecondary,
+                        color = when {
+                            uiState.isLegacyMode -> GlassTokens.AccentStart
+                            uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe
+                            else -> GlassTokens.TextSecondary
+                        },
                         fontWeight = FontWeight.Medium
                     )
+                }
+            }
+        }
+
+        // OEM Hooking Guidance Banner (PRD Section 9.0 & FR-11)
+        if (uiState.activeSystemSessions.isEmpty() && !uiState.isLegacyMode) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(GlassTokens.radiusMd)
+                        .background(Color.White.copy(alpha = 0.05f))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), GlassTokens.radiusMd)
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = "💡 Listening for external audio...",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "In Spotify/YT Music, turn ON 'Device Broadcast Status'. On Xiaomi/Samsung, switch to Legacy In-App Player.",
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                        Button(
+                            onClick = { viewModel.toggleLegacyMode() },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart.copy(alpha = 0.25f)),
+                            shape = GlassTokens.radiusPill,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("Legacy", fontSize = 11.sp, color = GlassTokens.AccentStart, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
