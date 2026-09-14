@@ -29,6 +29,7 @@ class AudioSessionReceiver : BroadcastReceiver() {
         when (action) {
             AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION -> {
                 Log.d(TAG, "Opening audio effect control session: $sessionId for $packageName")
+                AudioProcessingService.start(context)
                 SystemAudioEffectManager.instance.openSession(context, sessionId, packageName)
             }
             AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION -> {

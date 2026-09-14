@@ -2,6 +2,7 @@ package com.example.audio
 
 import android.content.Context
 import android.media.audiofx.AudioEffect
+import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
@@ -31,6 +32,7 @@ class SystemAudioEffectManager private constructor() {
         val sessionId: Int,
         val packageName: String,
         var equalizer: Equalizer? = null,
+        var bassBoost: BassBoost? = null,
         var virtualizer: Virtualizer? = null,
         var loudnessEnhancer: LoudnessEnhancer? = null,
         var dynamicsProcessing: DynamicsProcessing? = null
@@ -62,6 +64,7 @@ class SystemAudioEffectManager private constructor() {
     private var currentSpacePercent = 30f
     private var currentPunchPercent = 25f
     private var currentLoudnessPercent = 0f
+    var isParametricModeActive: Boolean = false
     private var isBypassed = false
     private var isMonoInput = false
 
@@ -73,10 +76,15 @@ class SystemAudioEffectManager private constructor() {
 
         try {
             val holder = SessionHolder(sessionId = sessionId, packageName = packageName)
+            val priority = 1000 // High priority to override OEM presets/defaults
 
             // 1. Equalizer (PRD 6.1 / 6.2)
             try {
-                val eq = Equalizer(100, sessionId).apply {
+                val eq = try {
+                    Equalizer(priority, sessionId)
+                } catch (e: Exception) {
+                    Equalizer(0, sessionId)
+                }.apply {
                     enabled = !isBypassed
                 }
                 holder.equalizer = eq
@@ -84,9 +92,27 @@ class SystemAudioEffectManager private constructor() {
                 Log.w(TAG, "Equalizer unavailable for session $sessionId: ${e.message}")
             }
 
-            // 2. Virtualizer / Space (PRD 6.3)
+            // 2. BassBoost (Essential for smartphone speakers and headphones)
             try {
-                val virt = Virtualizer(100, sessionId).apply {
+                val bb = try {
+                    BassBoost(priority, sessionId)
+                } catch (e: Exception) {
+                    BassBoost(0, sessionId)
+                }.apply {
+                    enabled = !isBypassed
+                }
+                holder.bassBoost = bb
+            } catch (e: Exception) {
+                Log.w(TAG, "BassBoost unavailable for session $sessionId: ${e.message}")
+            }
+
+            // 3. Virtualizer / Space (PRD 6.3)
+            try {
+                val virt = try {
+                    Virtualizer(priority, sessionId)
+                } catch (e: Exception) {
+                    Virtualizer(0, sessionId)
+                }.apply {
                     enabled = !isBypassed
                 }
                 holder.virtualizer = virt
@@ -94,7 +120,7 @@ class SystemAudioEffectManager private constructor() {
                 Log.w(TAG, "Virtualizer unavailable for session $sessionId: ${e.message}")
             }
 
-            // 3. LoudnessEnhancer (PRD 6.6)
+            // 4. LoudnessEnhancer (PRD 6.6)
             try {
                 val loud = LoudnessEnhancer(sessionId).apply {
                     enabled = !isBypassed
@@ -104,8 +130,10 @@ class SystemAudioEffectManager private constructor() {
                 Log.w(TAG, "LoudnessEnhancer unavailable for session $sessionId: ${e.message}")
             }
 
-            // 4. DynamicsProcessing on Android 9+ (PRD 6.8 / 9.0)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // 5. DynamicsProcessing on Android 9+ for dedicated player sessions only
+            // NEVER attach to session 0: Android HALs do not support global DynamicsProcessing
+            // and doing so overrides/breaks the Equalizer in AudioFlinger.
+            if (sessionId != 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 try {
                     val configBuilder = DynamicsProcessing.Config.Builder(
                         DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
@@ -118,7 +146,7 @@ class SystemAudioEffectManager private constructor() {
                         0,
                         true  // limiter
                     )
-                    val dynamics = DynamicsProcessing(100, sessionId, configBuilder.build()).apply {
+                    val dynamics = DynamicsProcessing(priority, sessionId, configBuilder.build()).apply {
                         enabled = !isBypassed
                     }
                     holder.dynamicsProcessing = dynamics
@@ -133,12 +161,10 @@ class SystemAudioEffectManager private constructor() {
 
             // PRD 12.1 addendum: session 0 is the global output mix. If we got at
             // least one real effect engine on it, the best-effort system-wide hook
-            // is genuinely active on this device. If every constructor above threw,
-            // this device/ROM doesn't honor session 0 at all - be honest about it
-            // instead of pretending it worked.
+            // is genuinely active on this device.
             if (sessionId == 0) {
-                val anyEffectAttached = holder.equalizer != null || holder.virtualizer != null ||
-                    holder.loudnessEnhancer != null || holder.dynamicsProcessing != null
+                val anyEffectAttached = holder.equalizer != null || holder.bassBoost != null ||
+                    holder.virtualizer != null || holder.loudnessEnhancer != null
                 _isGlobalHookActive.value = anyEffectAttached
                 if (!anyEffectAttached) {
                     Log.w(TAG, "Global session 0 hook unsupported on this device/ROM")
@@ -160,6 +186,8 @@ class SystemAudioEffectManager private constructor() {
             try {
                 holder.equalizer?.enabled = false
                 holder.equalizer?.release()
+                holder.bassBoost?.enabled = false
+                holder.bassBoost?.release()
                 holder.virtualizer?.enabled = false
                 holder.virtualizer?.release()
                 holder.loudnessEnhancer?.enabled = false
@@ -187,6 +215,7 @@ class SystemAudioEffectManager private constructor() {
         sessions.values.forEach { holder ->
             try {
                 holder.equalizer?.enabled = !bypassed
+                holder.bassBoost?.enabled = !bypassed
                 holder.virtualizer?.enabled = !bypassed
                 holder.loudnessEnhancer?.enabled = !bypassed
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -200,7 +229,10 @@ class SystemAudioEffectManager private constructor() {
 
     fun updatePlainEqGains(gains: Map<PlainBand, Float>) {
         currentEqGains.putAll(gains)
-        sessions.values.forEach { applyEqToHolder(it) }
+        sessions.values.forEach {
+            applyEqToHolder(it)
+            applyBassBoostToHolder(it)
+        }
     }
 
     fun updateParametricGains(gains: Map<Int, Float>) {
@@ -217,7 +249,10 @@ class SystemAudioEffectManager private constructor() {
 
     fun updatePunch(punchPercent: Float) {
         this.currentPunchPercent = punchPercent
-        sessions.values.forEach { applyDynamicsToHolder(it) }
+        sessions.values.forEach {
+            applyDynamicsToHolder(it)
+            applyBassBoostToHolder(it)
+        }
     }
 
     fun updateLoudness(loudnessPercent: Float) {
@@ -227,9 +262,28 @@ class SystemAudioEffectManager private constructor() {
 
     private fun applyStateToSession(holder: SessionHolder) {
         applyEqToHolder(holder)
+        applyBassBoostToHolder(holder)
         applySpaceToHolder(holder)
         applyDynamicsToHolder(holder)
         applyLoudnessToHolder(holder)
+    }
+
+    private fun applyBassBoostToHolder(holder: SessionHolder) {
+        val bb = holder.bassBoost ?: return
+        try {
+            if (bb.strengthSupported) {
+                // Calculate bass strength from Rumble gain, Warmth gain, and Punch
+                val rumbleGain = (currentEqGains[PlainBand.RUMBLE] ?: 0f).coerceAtLeast(0f)
+                val warmthGain = (currentEqGains[PlainBand.WARMTH] ?: 0f).coerceAtLeast(0f)
+                val eqContrib = ((rumbleGain * 0.7f + warmthGain * 0.3f) / 12f) * 600f
+                val punchContrib = (currentPunchPercent / 100f) * 400f
+                val strength = (eqContrib + punchContrib).toInt().coerceIn(0, 1000)
+                bb.setStrength(strength.toShort())
+                bb.enabled = !isBypassed && strength > 0
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error applying BassBoost to session ${holder.sessionId}: ${e.message}")
+        }
     }
 
     private fun applyEqToHolder(holder: SessionHolder) {
@@ -253,17 +307,18 @@ class SystemAudioEffectManager private constructor() {
     }
 
     private fun findBestGainForFrequency(freqHz: Int): Float {
-        // If parametric mode has active bands, find the closest matching frequency
-        if (currentParametricGains.isNotEmpty()) {
+        // If parametric mode is actively selected and has bands, use closest frequency
+        if (isParametricModeActive && currentParametricGains.isNotEmpty()) {
             val closest = currentParametricGains.minByOrNull { kotlin.math.abs(it.key - freqHz) }
             if (closest != null) {
                 return closest.value
             }
         }
-        // Otherwise interpolate from 5 plain-language bands
+        // Otherwise interpolate from 5 plain-language bands.
+        // Band 0 center frequency is typically 60-62.5 Hz on Android HALs, so threshold at 120 Hz.
         return when {
-            freqHz <= 60 -> currentEqGains[PlainBand.RUMBLE] ?: 0f
-            freqHz <= 250 -> currentEqGains[PlainBand.WARMTH] ?: 0f
+            freqHz <= 120 -> currentEqGains[PlainBand.RUMBLE] ?: 0f
+            freqHz <= 450 -> currentEqGains[PlainBand.WARMTH] ?: 0f
             freqHz <= 2000 -> currentEqGains[PlainBand.BODY] ?: 0f
             freqHz <= 6000 -> currentEqGains[PlainBand.CLARITY] ?: 0f
             else -> currentEqGains[PlainBand.AIR] ?: 0f

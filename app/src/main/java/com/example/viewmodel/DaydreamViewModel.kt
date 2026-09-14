@@ -283,6 +283,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     fun setTab(tab: AppNavTab) {
         val isAdv = tab == AppNavTab.ADVANCED
         audioEngine.isAdvancedParametricMode = isAdv
+        systemEffects.isParametricModeActive = isAdv
         _uiState.update { it.copy(currentTab = tab, isAdvancedModeActive = isAdv) }
     }
 
@@ -315,6 +316,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         val updated = _uiState.value.eqGains.toMutableMap()
         updated[band] = clamped
 
+        systemEffects.isParametricModeActive = false
         audioEngine.eqGains[band] = clamped
         systemEffects.updatePlainEqGains(updated)
 
@@ -327,6 +329,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             if (it.hz == hz) it.copy(gainDb = clamped) else it
         }
 
+        systemEffects.isParametricModeActive = true
         audioEngine.parametricGains[hz] = clamped
         systemEffects.updateParametricGains(mapOf(hz to clamped))
 
@@ -1073,7 +1076,9 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     override fun onCleared() {
         super.onCleared()
         audioEngine.stopPlayback()
-        systemEffects.releaseAll()
         deviceManager.unregisterCallback()
+        // Note: systemEffects are intentionally NOT released here so background
+        // audio enhancement (YouTube, Spotify, etc.) managed by AudioProcessingService
+        // continues uninterrupted when the UI activity/ViewModel is cleared.
     }
 }

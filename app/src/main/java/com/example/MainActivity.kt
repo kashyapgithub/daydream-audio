@@ -74,10 +74,16 @@ import com.example.viewmodel.AppNavTab
 import com.example.viewmodel.DaydreamViewModel
 import kotlinx.coroutines.delay
 
+import com.example.audio.AudioProcessingService
+import com.example.audio.SystemAudioEffectManager
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Start foreground audio processing service to keep effects alive across YouTube/system apps
+        AudioProcessingService.start(this)
 
         // Hook global audio session 0 for system-wide baseline output
         SystemAudioEffectManager.instance.openSession(this, 0, "Global System Output")

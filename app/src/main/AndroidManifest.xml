@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <!-- BLUETOOTH_CONNECT intentionally NOT declared: device name detection uses
          AudioDeviceInfo.productName, which does not require this permission.
@@ -24,6 +27,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Foreground Audio Processing Service (keeps AudioEffects active in background) -->
+        <service
+            android:name=".audio.AudioProcessingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- System Audio Session Broadcast Receiver (PRD 8.0 & 12.1) -->
         <receiver
