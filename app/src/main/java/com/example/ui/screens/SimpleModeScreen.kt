@@ -1,0 +1,505 @@
+package com.example.ui.screens
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.model.PlainBand
+import com.example.ui.components.ABCompareBar
+import com.example.ui.components.BandTooltipDialog
+import com.example.ui.components.LiquidSlider
+import com.example.ui.theme.GlassTokens
+import com.example.ui.theme.raisedGlass
+import com.example.viewmodel.DaydreamUiState
+import com.example.viewmodel.DaydreamViewModel
+
+@Composable
+fun SimpleModeScreen(
+    viewModel: DaydreamViewModel,
+    uiState: DaydreamUiState,
+    paddingValues: PaddingValues
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+    ) {
+        // Header & Quick Action
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Daydream Audio",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    Text(
+                        text = "Sound the way you remember it",
+                        fontSize = 13.sp,
+                        color = GlassTokens.TextSecondary
+                    )
+                }
+
+                // Wizard Diagnosis Button
+                Button(
+                    onClick = { viewModel.openWizardDialog() },
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                    shape = GlassTokens.radiusPill,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.testTag("wizard_trigger_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Diagnose",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+
+        // Output Device Chip
+        item {
+            Row(
+                modifier = Modifier
+                    .clip(GlassTokens.radiusPill)
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusPill)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Headphones,
+                    contentDescription = null,
+                    tint = GlassTokens.AccentStart,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Profile: ${uiState.currentDevice.displayName}",
+                    fontSize = 12.sp,
+                    color = GlassTokens.TextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        // Active Wizard Fix Banner (if applied)
+        if (uiState.lastWizardFixSummary != null) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(GlassTokens.radiusMd)
+                        .background(GlassTokens.AccentStart.copy(alpha = 0.15f))
+                        .border(1.dp, GlassTokens.AccentStart.copy(alpha = 0.4f), GlassTokens.radiusMd)
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "✨ Active Fix: ${uiState.lastAppliedComplaint?.label ?: "Smart Tune"}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.AccentStart
+                            )
+                            Text(
+                                text = uiState.lastWizardFixSummary,
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        IconButton(onClick = { viewModel.resetAllToFlat() }) {
+                            Icon(
+                                imageVector = Icons.Default.RestartAlt,
+                                contentDescription = "Reset to Flat",
+                                tint = GlassTokens.TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Prominent A/B Instant Compare Bar (PRD FR-3)
+        item {
+            ABCompareBar(
+                isBypassed = uiState.isBypassed,
+                onToggle = { viewModel.toggleBypassAB() },
+                reduceGlass = uiState.reduceGlass
+            )
+        }
+
+        // Mono Warning Banner (PRD FR-4)
+        item {
+            AnimatedVisibility(visible = uiState.showMonoWarning) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(GlassTokens.radiusMd)
+                        .background(GlassTokens.AccentWarning.copy(alpha = 0.15f))
+                        .border(1.dp, GlassTokens.AccentWarning.copy(alpha = 0.4f), GlassTokens.radiusMd)
+                        .padding(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = GlassTokens.AccentWarning,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Mono Recording Detected",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.AccentWarning
+                            )
+                            Text(
+                                text = "Virtualizer 'Space' is capped. Expanding mono audio too far creates phase cancellation and hollow vocals.",
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Card 1: Restoration & Noise Reduction (PRD 6.10 Tier 1)
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .raisedGlass(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Analog Restoration",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "Eliminates hiss, vinyl clicks, and power hum",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Hiss Removal Slider
+                    LiquidSlider(
+                        title = "Hiss Removal",
+                        value = uiState.hissRemovalPercent,
+                        onValueChange = { viewModel.setHissRemovalPercent(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "High-Shelf Spectral Gate",
+                        showTechnical = uiState.showTechnicalValues,
+                        tipDescription = "Reduces tape hiss floor in quiet passages.",
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // De-Hum & De-Crackle Toggles (PRD FR-7: separate controls)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // De-Hum Toggle
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(GlassTokens.radiusSm)
+                                .background(Color.White.copy(alpha = if (uiState.deHumEnabled) 0.12f else 0.05f))
+                                .border(
+                                    1.dp,
+                                    if (uiState.deHumEnabled) GlassTokens.AccentStart else Color.White.copy(alpha = 0.1f),
+                                    GlassTokens.radiusSm
+                                )
+                                .clickable { viewModel.toggleDeHum() }
+                                .padding(10.dp)
+                                .testTag("dehum_toggle")
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "De-Hum",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (uiState.deHumEnabled) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                    )
+                                    Text(
+                                        text = "50/60Hz notch",
+                                        fontSize = 11.sp,
+                                        color = GlassTokens.TextSecondary
+                                    )
+                                }
+                                Switch(
+                                    checked = uiState.deHumEnabled,
+                                    onCheckedChange = { viewModel.toggleDeHum() },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = GlassTokens.AccentStart
+                                    )
+                                )
+                            }
+                        }
+
+                        // De-Crackle Toggle
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(GlassTokens.radiusSm)
+                                .background(Color.White.copy(alpha = if (uiState.deCrackleEnabled) 0.12f else 0.05f))
+                                .border(
+                                    1.dp,
+                                    if (uiState.deCrackleEnabled) GlassTokens.AccentStart else Color.White.copy(alpha = 0.1f),
+                                    GlassTokens.radiusSm
+                                )
+                                .clickable { viewModel.toggleDeCrackle() }
+                                .padding(10.dp)
+                                .testTag("decrackle_toggle")
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "De-Crackle",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (uiState.deCrackleEnabled) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                    )
+                                    Text(
+                                        text = "Vinyl pops",
+                                        fontSize = 11.sp,
+                                        color = GlassTokens.TextSecondary
+                                    )
+                                }
+                                Switch(
+                                    checked = uiState.deCrackleEnabled,
+                                    onCheckedChange = { viewModel.toggleDeCrackle() },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = GlassTokens.AccentStart
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Card 2: Plain-English Equalizer (PRD 6.1)
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .raisedGlass(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Tone Shaper",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "5 plain-English bands — tap any title for info",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    PlainBand.entries.forEach { band ->
+                        val gain = uiState.eqGains[band] ?: 0f
+                        LiquidSlider(
+                            title = band.title,
+                            value = gain,
+                            onValueChange = { viewModel.setEqGain(band, it) },
+                            valueRange = -12f..12f,
+                            unit = "dB",
+                            technicalValue = band.frequencyRange,
+                            showTechnical = uiState.showTechnicalValues,
+                            onInfoClick = { viewModel.showTooltip(band) },
+                            reduceGlass = uiState.reduceGlass
+                        )
+                    }
+                }
+            }
+        }
+
+        // Card 3: Dynamics, Space & Loudness (PRD 6.3, 6.6, 6.8, 6.9)
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .raisedGlass(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "Acoustic Presence & Space",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    Text(
+                        text = "Compressor punch, spatial width & volume booster",
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Space (Virtualizer)
+                    LiquidSlider(
+                        title = "Space (Width)",
+                        value = uiState.spacePercent,
+                        onValueChange = { viewModel.setSpacePercent(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "HRTF Crossfeed",
+                        showTechnical = uiState.showTechnicalValues,
+                        isWarning = uiState.showMonoWarning,
+                        warningText = if (uiState.showMonoWarning) "Mono source detected — keep low" else null,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    // Punch (Dynamics Compressor)
+                    LiquidSlider(
+                        title = "Punch (Dynamic Range)",
+                        value = uiState.punchPercent,
+                        onValueChange = { viewModel.setPunchPercent(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "RMS Soft-Knee Compressor",
+                        showTechnical = uiState.showTechnicalValues,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    // Clarity Macro (Presence exciter)
+                    LiquidSlider(
+                        title = "Vocal Clarity Macro",
+                        value = uiState.clarityMacroPercent,
+                        onValueChange = { viewModel.setClarityMacroPercent(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "Multiband Harmonic Exciter",
+                        showTechnical = uiState.showTechnicalValues,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    // Loudness (Volume Boost with auto limiter, PRD FR-5)
+                    LiquidSlider(
+                        title = "Volume Boost (Loudness)",
+                        value = uiState.loudnessPercent,
+                        onValueChange = { viewModel.setLoudnessPercent(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "LoudnessEnhancer + True-Peak Limiter",
+                        showTechnical = uiState.showTechnicalValues,
+                        isWarning = uiState.loudnessPercent > 75f,
+                        warningText = if (uiState.loudnessPercent > 75f) "Past 75% loudness trades clarity for output" else "Soft brickwall limiter active (no clipping)",
+                        accentColor = if (uiState.loudnessPercent > 75f) GlassTokens.AccentWarning else GlassTokens.AccentSafe,
+                        reduceGlass = uiState.reduceGlass
+                    )
+                }
+            }
+        }
+    }
+
+    // Active Tooltip Dialog
+    if (uiState.activeTooltipBand != null) {
+        BandTooltipDialog(
+            band = uiState.activeTooltipBand,
+            onDismiss = { viewModel.showTooltip(null) }
+        )
+    }
+}
