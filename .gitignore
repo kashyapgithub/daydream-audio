@@ -9,3 +9,4 @@
 *.hprof
 *.keystore
 *.keystore.base64
+.kotlin

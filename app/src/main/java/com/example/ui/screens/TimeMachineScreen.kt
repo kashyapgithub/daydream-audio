@@ -397,13 +397,22 @@ fun MemoryPostcardDialog(
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color(0xFF1E1035),
-                                    Color(0xFF0F0A1C),
-                                    Color(0xFF05050A)
+                                    Color(0xFF141C2B),
+                                    Color(0xFF0C101A),
+                                    Color(0xFF06090E)
                                 )
                             )
                         )
-                        .border(1.dp, GlassTokens.AccentStart.copy(alpha = 0.4f), GlassTokens.radiusMd)
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(
+                                listOf(
+                                    GlassTokens.AccentEnd.copy(alpha = 0.5f),
+                                    GlassTokens.AccentStart.copy(alpha = 0.2f)
+                                )
+                            ),
+                            GlassTokens.radiusMd
+                        )
                         .padding(20.dp)
                 ) {
                     Column(
@@ -422,7 +431,7 @@ fun MemoryPostcardDialog(
                                 text = "DAYDREAM TIME MACHINE",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.AccentStart,
+                                color = GlassTokens.AccentEnd,
                                 letterSpacing = 1.sp
                             )
                         }
@@ -459,13 +468,19 @@ fun MemoryPostcardDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val barHeights = listOf(14.dp, 28.dp, 20.dp, 36.dp, 44.dp, 30.dp, 22.dp, 38.dp, 16.dp, 26.dp)
+                            val waveformBrush = Brush.verticalGradient(
+                                listOf(
+                                    GlassTokens.AccentEnd,
+                                    GlassTokens.AccentStart
+                                )
+                            )
                             barHeights.forEach { h ->
                                 Box(
                                     modifier = Modifier
                                         .width(5.dp)
                                         .height(h)
                                         .clip(GlassTokens.radiusPill)
-                                        .background(GlassTokens.AccentStart)
+                                        .background(waveformBrush)
                                 )
                             }
                         }

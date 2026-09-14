@@ -64,7 +64,6 @@ fun AdvancedModeScreen(
     paddingValues: PaddingValues
 ) {
     val clipboardManager = LocalClipboardManager.current
-    var selectedHrtf by remember { mutableStateOf(uiState.hrtfProfile) }
 
     LazyColumn(
         modifier = Modifier
@@ -258,16 +257,16 @@ fun AdvancedModeScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         listOf("Narrow", "Natural", "Wide").forEach { profile ->
-                            val isSelected = selectedHrtf == profile
+                            val isSelected = uiState.hrtfProfile == profile
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(GlassTokens.radiusPill)
                                     .background(
                                         if (isSelected) GlassTokens.AccentStart
-                                        else Color.White.copy(alpha = 0.08f)
+                                         else Color.White.copy(alpha = 0.08f)
                                     )
-                                    .clickable { selectedHrtf = profile }
+                                    .clickable { viewModel.setHrtfProfile(profile) }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {

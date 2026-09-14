@@ -49,7 +49,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -194,15 +196,24 @@ class MainActivity : ComponentActivity() {
                                     Box(
                                         modifier = Modifier
                                             .clip(GlassTokens.radiusPill)
-                                            .background(Color(0xFF1E1A2C).copy(alpha = 0.95f))
-                                            .border(1.dp, GlassTokens.AccentStart.copy(alpha = 0.6f), GlassTokens.radiusPill)
+                                            .background(Color(0xFF101624).copy(alpha = 0.95f))
+                                            .border(
+                                                1.dp,
+                                                Brush.verticalGradient(
+                                                    listOf(
+                                                        GlassTokens.AccentEnd.copy(alpha = 0.6f),
+                                                        GlassTokens.AccentStart.copy(alpha = 0.2f)
+                                                    )
+                                                ),
+                                                GlassTokens.radiusPill
+                                            )
                                             .padding(horizontal = 16.dp, vertical = 10.dp)
                                     ) {
                                         Text(
                                             text = msg,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = GlassTokens.AccentStart
+                                            color = GlassTokens.AccentEnd
                                         )
                                     }
                                 }
@@ -263,13 +274,23 @@ private fun FloatingGlassNavBar(
                 .padding(horizontal = 3.dp, vertical = 3.dp)
                 .clip(GlassTokens.radiusPill)
                 .background(
-                    if (reduceGlass) GlassTokens.SolidCardFill
-                    else GlassTokens.RaisedGlassFill
+                    if (reduceGlass) SolidColor(GlassTokens.SolidCardFill)
+                    else Brush.verticalGradient(
+                        listOf(
+                            GlassTokens.AccentStart.copy(alpha = 0.28f),
+                            GlassTokens.AccentEnd.copy(alpha = 0.12f)
+                        )
+                    )
                 )
                 .border(
                     1.dp,
-                    if (reduceGlass) GlassTokens.SolidCardBorder
-                    else GlassTokens.AccentStart.copy(alpha = 0.35f),
+                    if (reduceGlass) SolidColor(GlassTokens.SolidCardBorder)
+                    else Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.45f),
+                            Color.White.copy(alpha = 0.10f)
+                        )
+                    ),
                     GlassTokens.radiusPill
                 )
         )
@@ -304,7 +325,7 @@ private fun FloatingGlassNavBar(
                         Icon(
                             imageVector = icon,
                             contentDescription = tab.title,
-                            tint = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextSecondary,
+                            tint = if (isSelected) GlassTokens.AccentEnd else GlassTokens.TextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
@@ -312,7 +333,7 @@ private fun FloatingGlassNavBar(
                             text = tab.title,
                             fontSize = 10.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextSecondary
+                            color = if (isSelected) GlassTokens.AccentEnd else GlassTokens.TextSecondary
                         )
                     }
                 }

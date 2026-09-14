@@ -55,6 +55,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -85,74 +86,95 @@ fun SonicGlassBackground(
 ) {
     val animatedRms by animateFloatAsState(
         targetValue = if (reduceMotion) 0f else audioRms.coerceIn(0f, 0.45f),
-        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "rms_glow"
     )
 
-    // PRD 22.7 & 22.12: Ambient tint shifts based on frequency energy (warm for bass, cooler for treble)
-    val isWarmDominant = if (spectrum != null && spectrum.size >= 8) {
-        (spectrum[0] + spectrum[1] + spectrum[2]) >= (spectrum[5] + spectrum[6] + spectrum[7])
-    } else true
+    val trebleEnergy = if (spectrum != null && spectrum.size >= 8) {
+        (spectrum[5] + spectrum[6] + spectrum[7]) / 3f
+    } else 0.1f
 
-    val targetTint = when {
-        reduceMotion || reduceGlass -> Color.Transparent
-        isWarmDominant -> GlassTokens.AccentStart.copy(alpha = 0.16f)
-        else -> GlassTokens.AccentCool.copy(alpha = 0.14f) // Cooler violet/indigo for airy/crisp audio
-    }
-
-    val ambientTint by animateColorAsState(
-        targetValue = targetTint,
-        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
-        label = "sonic_ambient_tint"
-    )
+    val bassEnergy = if (spectrum != null && spectrum.size >= 8) {
+        (spectrum[0] + spectrum[1] + spectrum[2]) / 3f
+    } else 0.1f
 
     Box(modifier = modifier.fillMaxSize().background(GlassTokens.BackdropBase)) {
         if (!reduceGlass) {
-            // Ambient photo backdrop
+            // Ambient photo backdrop with optical blur
             Image(
                 painter = painterResource(id = R.drawable.bg_ambient_glass),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(28.dp)
+                    .blur(36.dp)
             )
 
-            // Audio-reactive Sonic Glass ripple canvas (PRD 22.7 & 22.12)
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val center = Offset(size.width / 2f, size.height * 0.38f)
+            // Deep Midnight obsidian glass filter layer over image
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xFF07090E).copy(alpha = 0.85f),
+                                Color(0xFF030508).copy(alpha = 0.92f)
+                            )
+                        )
+                    )
+            )
 
-                // 1. Primary transient droplet ripple
-                val rippleRadius1 = (size.width * 0.35f) + (animatedRms * 320f)
-                val alpha1 = (0.14f + animatedRms * 0.50f).coerceIn(0f, 0.55f)
+            // Fluid Apple Aurora light fields (PRD 22.7 & 22.12)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                // Pole A: Electric Cyan Aurora (Top-Left)
+                val poleARadius = (size.width * 0.55f) + (animatedRms * 280f) + (bassEnergy * 120f)
+                val poleAAlpha = (0.20f + animatedRms * 0.35f).coerceIn(0.12f, 0.50f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            GlassTokens.AccentStart.copy(alpha = alpha1),
-                            ambientTint,
+                            GlassTokens.AccentEnd.copy(alpha = poleAAlpha),
+                            GlassTokens.AccentStart.copy(alpha = poleAAlpha * 0.5f),
                             Color.Transparent
                         ),
-                        center = center,
-                        radius = rippleRadius1
+                        center = Offset(size.width * 0.20f, size.height * 0.18f),
+                        radius = poleARadius
                     ),
-                    radius = rippleRadius1,
-                    center = center
+                    radius = poleARadius,
+                    center = Offset(size.width * 0.20f, size.height * 0.18f)
                 )
 
-                // 2. Secondary dissipating outer wave ring
-                val rippleRadius2 = (size.width * 0.60f) + (animatedRms * 480f)
-                val alpha2 = (0.06f + animatedRms * 0.25f).coerceIn(0f, 0.25f)
+                // Pole B: Neon Violet / Indigo Aurora (Bottom-Right)
+                val poleBRadius = (size.width * 0.65f) + (animatedRms * 320f) + (trebleEnergy * 150f)
+                val poleBAlpha = (0.16f + animatedRms * 0.28f).coerceIn(0.10f, 0.42f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            ambientTint.copy(alpha = alpha2),
-                            GlassTokens.AccentEnd.copy(alpha = alpha2 * 0.5f),
+                            GlassTokens.AccentCool.copy(alpha = poleBAlpha),
+                            GlassTokens.AccentStart.copy(alpha = poleBAlpha * 0.3f),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.85f, size.height * 0.72f),
+                        radius = poleBRadius
+                    ),
+                    radius = poleBRadius,
+                    center = Offset(size.width * 0.85f, size.height * 0.72f)
+                )
+
+                // Center Dynamic Fluid Lens Ripple
+                val center = Offset(size.width / 2f, size.height * 0.42f)
+                val rippleRadius = (size.width * 0.40f) + (animatedRms * 360f)
+                val rippleAlpha = (0.08f + animatedRms * 0.22f).coerceIn(0.04f, 0.28f)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            GlassTokens.AccentCyan.copy(alpha = rippleAlpha),
+                            GlassTokens.AccentCool.copy(alpha = rippleAlpha * 0.4f),
                             Color.Transparent
                         ),
                         center = center,
-                        radius = rippleRadius2
+                        radius = rippleRadius
                     ),
-                    radius = rippleRadius2,
+                    radius = rippleRadius,
                     center = center
                 )
             }
@@ -162,7 +184,7 @@ fun SonicGlassBackground(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(GlassTokens.BackdropScrim.copy(alpha = if (reduceGlass) 0.98f else 0.48f))
+                .background(GlassTokens.BackdropScrim.copy(alpha = if (reduceGlass) 0.98f else 0.35f))
         )
 
         content()
@@ -238,11 +260,28 @@ fun LiquidSlider(
                         modifier = Modifier.padding(end = 6.dp)
                     )
                 }
+                val formattedDisplayValue = when {
+                    unit == "x" -> String.format(java.util.Locale.US, "%.2fx", value)
+                    unit == ":1" -> String.format(java.util.Locale.US, "%.1f:1", value)
+                    unit == "Q" -> String.format(java.util.Locale.US, "%.1f", value)
+                    unit == "dB" -> {
+                        if (value % 1f == 0f) {
+                            if (value > 0) "+${value.toInt()}dB" else "${value.toInt()}dB"
+                        } else {
+                            if (value > 0) String.format(java.util.Locale.US, "+%.1fdB", value)
+                            else String.format(java.util.Locale.US, "%.1fdB", value)
+                        }
+                    }
+                    value % 1f != 0f && (valueRange.endInclusive - valueRange.start <= 20f) -> {
+                        String.format(java.util.Locale.US, "%.1f%s", value, unit)
+                    }
+                    else -> "${value.toInt()}$unit"
+                }
                 Text(
-                    text = if (value > 0 && unit == "dB") "+${value.toInt()}$unit" else "${value.toInt()}$unit",
+                    text = formattedDisplayValue,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isWarning) GlassTokens.AccentWarning else GlassTokens.AccentStart
+                    color = if (isWarning) GlassTokens.AccentWarning else GlassTokens.AccentEnd
                 )
             }
         }
@@ -292,38 +331,54 @@ fun LiquidSlider(
                             } else Modifier
                         )
                         .background(
-                            if (reduceGlass) GlassTokens.SolidCardFill
-                            else GlassTokens.RaisedGlassFill
+                            if (reduceGlass) SolidColor(GlassTokens.SolidCardFill)
+                            else Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF243048),
+                                    Color(0xFF121927)
+                                )
+                            )
                         )
                         .border(
                             1.5.dp,
-                            if (isWarning) GlassTokens.AccentWarning
-                            else Color.White.copy(alpha = 0.35f),
+                            if (isWarning) SolidColor(GlassTokens.AccentWarning)
+                            else Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.85f),
+                                    Color.White.copy(alpha = 0.20f)
+                                )
+                            ),
                             CircleShape
                         ),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Glass pearl 3D specular lens highlight
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = 0.45f),
-                                    Color.White.copy(alpha = 0.10f),
+                                    Color.White.copy(alpha = 0.65f),
+                                    Color.White.copy(alpha = 0.12f),
                                     Color.Transparent
                                 ),
-                                center = Offset(size.width * 0.35f, size.height * 0.35f),
-                                radius = size.width * 0.5f
+                                center = Offset(size.width * 0.35f, size.height * 0.30f),
+                                radius = size.width * 0.42f
                             ),
-                            radius = size.width * 0.45f,
-                            center = Offset(size.width * 0.35f, size.height * 0.35f)
+                            radius = size.width * 0.38f,
+                            center = Offset(size.width * 0.35f, size.height * 0.30f)
                         )
                     }
 
+                    // Fluid jewel center core
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
+                            .size(if (isDragged) 12.dp else 10.dp)
                             .clip(CircleShape)
-                            .background(if (isWarning) GlassTokens.AccentWarning else accentColor)
+                            .background(
+                                if (isWarning) SolidColor(GlassTokens.AccentWarning)
+                                else GlassTokens.AccentGradient
+                            )
+                            .border(0.5.dp, Color.White.copy(alpha = 0.80f), CircleShape)
                     )
                 }
             },
@@ -336,25 +391,36 @@ fun LiquidSlider(
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(6.dp)
+                        .height(8.dp)
                         .clip(GlassTokens.radiusPill)
                 ) {
+                    // Apple-style sunken glass trench
                     drawRoundRect(
-                        color = Color.White.copy(alpha = 0.10f),
+                        color = Color(0xFF0B101A).copy(alpha = 0.85f),
                         cornerRadius = CornerRadius(size.height / 2, size.height / 2)
+                    )
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.16f),
+                                Color.White.copy(alpha = 0.04f)
+                            )
+                        ),
+                        cornerRadius = CornerRadius(size.height / 2, size.height / 2),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
                     )
 
                     val activeWidth = size.width * fraction
                     if (activeWidth > 0f) {
-                        val trackAlpha = (0.75f + fraction * 0.25f).coerceIn(0.75f, 1.0f)
                         val gradientColors = if (isWarning) {
                             listOf(GlassTokens.AccentWarning, GlassTokens.AccentWarning)
                         } else {
                             listOf(
-                                GlassTokens.AccentStart.copy(alpha = trackAlpha),
-                                GlassTokens.AccentEnd.copy(alpha = trackAlpha)
+                                GlassTokens.AccentStart,
+                                GlassTokens.AccentEnd
                             )
                         }
+                        // Fluid liquid progress capsule
                         drawRoundRect(
                             brush = Brush.horizontalGradient(
                                 colors = gradientColors,
@@ -362,6 +428,17 @@ fun LiquidSlider(
                                 endX = size.width
                             ),
                             size = Size(activeWidth, size.height),
+                            cornerRadius = CornerRadius(size.height / 2, size.height / 2)
+                        )
+                        // Specular gloss surface sheen
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.42f),
+                                    Color.Transparent
+                                )
+                            ),
+                            size = Size(activeWidth, size.height * 0.48f),
                             cornerRadius = CornerRadius(size.height / 2, size.height / 2)
                         )
                     }
@@ -400,18 +477,29 @@ fun ABCompareBar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(
-                            if (isBypassed) Color.White.copy(alpha = 0.15f)
-                            else GlassTokens.AccentStart.copy(alpha = 0.25f)
+                            if (isBypassed) SolidColor(Color.White.copy(alpha = 0.12f))
+                            else Brush.verticalGradient(
+                                listOf(
+                                    GlassTokens.AccentStart.copy(alpha = 0.35f),
+                                    GlassTokens.AccentEnd.copy(alpha = 0.20f)
+                                )
+                            )
+                        )
+                        .border(
+                            1.dp,
+                            if (isBypassed) Color.White.copy(alpha = 0.20f)
+                            else GlassTokens.AccentEnd.copy(alpha = 0.60f),
+                            CircleShape
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.CompareArrows,
                         contentDescription = "A/B Compare",
-                        tint = if (isBypassed) Color.White.copy(alpha = 0.7f) else GlassTokens.AccentStart,
+                        tint = if (isBypassed) Color.White.copy(alpha = 0.7f) else GlassTokens.AccentEnd,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -421,7 +509,7 @@ fun ABCompareBar(
                         text = if (isBypassed) "A/B: Original Raw Sound" else "A/B: Restored Daydream Audio",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isBypassed) Color.White.copy(alpha = 0.8f) else GlassTokens.AccentStart
+                        color = if (isBypassed) Color.White.copy(alpha = 0.8f) else GlassTokens.AccentEnd
                     )
                     Text(
                         text = if (isBypassed) "Bypass active — tap to hear restoration" else "Tap to instantly hear original unprocessed source",
@@ -436,22 +524,22 @@ fun ABCompareBar(
                 modifier = Modifier
                     .clip(GlassTokens.radiusPill)
                     .background(
-                        if (isBypassed) Color.White.copy(alpha = 0.1f)
-                        else GlassTokens.AccentSafe.copy(alpha = 0.2f)
+                        if (isBypassed) Color.White.copy(alpha = 0.10f)
+                        else GlassTokens.AccentSafe.copy(alpha = 0.18f)
                     )
                     .border(
                         1.dp,
-                        if (isBypassed) Color.White.copy(alpha = 0.2f)
-                        else GlassTokens.AccentSafe.copy(alpha = 0.6f),
+                        if (isBypassed) Color.White.copy(alpha = 0.22f)
+                        else GlassTokens.AccentSafe.copy(alpha = 0.70f),
                         GlassTokens.radiusPill
                     )
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .padding(horizontal = 12.dp, vertical = 5.dp)
             ) {
                 Text(
                     text = if (isBypassed) "RAW" else "ACTIVE",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isBypassed) Color.White.copy(alpha = 0.7f) else GlassTokens.AccentSafe
+                    color = if (isBypassed) Color.White.copy(alpha = 0.75f) else GlassTokens.AccentSafe
                 )
             }
         }
@@ -492,7 +580,8 @@ fun NowPlayingGlassBar(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(GlassTokens.radiusSm)
-                        .background(GlassTokens.AccentGradient),
+                        .background(GlassTokens.AccentGradient)
+                        .border(1.dp, Color.White.copy(alpha = 0.35f), GlassTokens.radiusSm),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
@@ -516,13 +605,13 @@ fun NowPlayingGlassBar(
                     Text(
                         text = track?.era ?: "Demo Engine",
                         fontSize = 11.sp,
-                        color = GlassTokens.AccentStart,
+                        color = GlassTokens.AccentEnd,
                         maxLines = 1
                     )
                 }
             }
 
-            // Live 8-Band Visualizer
+            // Live 8-Band Visualizer (Apple Fluid Spectrum)
             Row(
                 modifier = Modifier
                     .padding(horizontal = 8.dp)
@@ -530,15 +619,21 @@ fun NowPlayingGlassBar(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
+                val barBrush = Brush.verticalGradient(
+                    listOf(
+                        GlassTokens.AccentEnd,
+                        GlassTokens.AccentStart
+                    )
+                )
                 spectrum.take(6).forEach { level ->
                     val barHeight = (level * 24f).coerceIn(4f, 24f)
                     Box(
                         modifier = Modifier
-                            .width(3.dp)
+                            .width(3.5.dp)
                             .height(barHeight.dp)
                             .clip(GlassTokens.radiusPill)
                             .background(
-                                if (isPlaying) GlassTokens.AccentStart else Color.White.copy(alpha = 0.2f)
+                                if (isPlaying) barBrush else SolidColor(Color.White.copy(alpha = 0.20f))
                             )
                     )
                 }
@@ -594,7 +689,7 @@ fun BandTooltipDialog(
                         text = band.title,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = GlassTokens.AccentStart
+                        color = GlassTokens.AccentEnd
                     )
                     Text(
                         text = band.frequencyRange,
@@ -623,6 +718,7 @@ fun BandTooltipDialog(
                         .fillMaxWidth()
                         .clip(GlassTokens.radiusSm)
                         .background(GlassTokens.AccentSafe.copy(alpha = 0.12f))
+                        .border(1.dp, GlassTokens.AccentSafe.copy(alpha = 0.3f), GlassTokens.radiusSm)
                         .padding(10.dp)
                 ) {
                     Text(
@@ -636,6 +732,7 @@ fun BandTooltipDialog(
                         .fillMaxWidth()
                         .clip(GlassTokens.radiusSm)
                         .background(GlassTokens.AccentWarning.copy(alpha = 0.12f))
+                        .border(1.dp, GlassTokens.AccentWarning.copy(alpha = 0.3f), GlassTokens.radiusSm)
                         .padding(10.dp)
                 ) {
                     Text(
@@ -655,7 +752,7 @@ fun BandTooltipDialog(
                 Text("Got It", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
-        containerColor = Color(0xFF191626),
+        containerColor = Color(0xFF101522),
         shape = GlassTokens.radiusLg
     )
 }

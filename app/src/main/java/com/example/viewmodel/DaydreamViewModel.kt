@@ -93,7 +93,6 @@ data class DaydreamUiState(
     val compAttackMs: Float = 20f,
     val compReleaseMs: Float = 150f,
     val limiterCeilingDb: Float = -0.5f,
-    val hrtfProfile: String = "Natural",
 
     // Time Machine & Vintage-ify
     val activePresetId: String? = null,
@@ -125,8 +124,9 @@ data class DaydreamUiState(
     // Legacy Mode & Fallback (PRD 9.0 & FR-11)
     val isLegacyMode: Boolean = false,
 
-    // Static Spatial Room Simulation (PRD 6.7a)
+    // Static Spatial Room Simulation (PRD 6.7a) & Virtualizer HRTF Profile (PRD 6.3)
     val spatialRoomType: String = "Natural", // "Natural", "Intimate Studio", "Concert Hall", "Cathedral"
+    val hrtfProfile: String = "Natural", // "Narrow", "Natural", "Wide"
 
     // Golden Ear Trainer Sonic Glass Hint Layer (PRD 22.7 & 22.8)
     val showSonicHintInEarTrainer: Boolean = false,
@@ -317,7 +317,9 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         updated[band] = clamped
 
         systemEffects.isParametricModeActive = false
+        audioEngine.isAdvancedParametricMode = false
         audioEngine.eqGains[band] = clamped
+        audioEngine.updateDspCoefficients()
         systemEffects.updatePlainEqGains(updated)
 
         _uiState.update { it.copy(eqGains = updated, activePresetId = null) }
@@ -330,7 +332,9 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         }
 
         systemEffects.isParametricModeActive = true
+        audioEngine.isAdvancedParametricMode = true
         audioEngine.parametricGains[hz] = clamped
+        audioEngine.updateDspCoefficients()
         systemEffects.updateParametricGains(mapOf(hz to clamped))
 
         _uiState.update { it.copy(advancedBands = updatedBands, activePresetId = null) }
@@ -342,7 +346,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             if (it.hz == hz) it.copy(q = clampedQ) else it
         }
         audioEngine.parametricQ[hz] = clampedQ
+        audioEngine.updateDspCoefficients()
         _uiState.update { it.copy(advancedBands = updatedBands) }
+    }
+
+    fun setHrtfProfile(profile: String) {
+        audioEngine.hrtfProfile = profile
+        systemEffects.updateHrtfProfile(profile)
+        _uiState.update { it.copy(hrtfProfile = profile) }
     }
 
     fun setSpacePercent(value: Float) {
@@ -372,30 +383,55 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     fun setCompThresholdDb(thresholdDb: Float) {
         val clamped = thresholdDb.coerceIn(-40f, 0f)
         audioEngine.compThresholdDb = clamped
+        systemEffects.updateDynamicsCompressor(
+            thresholdDb = clamped,
+            ratio = _uiState.value.compRatio,
+            attackMs = _uiState.value.compAttackMs,
+            releaseMs = _uiState.value.compReleaseMs
+        )
         _uiState.update { it.copy(compThresholdDb = clamped) }
     }
 
     fun setCompRatio(ratio: Float) {
         val clamped = ratio.coerceIn(1f, 10f)
         audioEngine.compRatio = clamped
+        systemEffects.updateDynamicsCompressor(
+            thresholdDb = _uiState.value.compThresholdDb,
+            ratio = clamped,
+            attackMs = _uiState.value.compAttackMs,
+            releaseMs = _uiState.value.compReleaseMs
+        )
         _uiState.update { it.copy(compRatio = clamped) }
     }
 
     fun setCompAttackMs(attackMs: Float) {
         val clamped = attackMs.coerceIn(1f, 100f)
         audioEngine.compAttackMs = clamped
+        systemEffects.updateDynamicsCompressor(
+            thresholdDb = _uiState.value.compThresholdDb,
+            ratio = _uiState.value.compRatio,
+            attackMs = clamped,
+            releaseMs = _uiState.value.compReleaseMs
+        )
         _uiState.update { it.copy(compAttackMs = clamped) }
     }
 
     fun setCompReleaseMs(releaseMs: Float) {
         val clamped = releaseMs.coerceIn(10f, 500f)
         audioEngine.compReleaseMs = clamped
+        systemEffects.updateDynamicsCompressor(
+            thresholdDb = _uiState.value.compThresholdDb,
+            ratio = _uiState.value.compRatio,
+            attackMs = _uiState.value.compAttackMs,
+            releaseMs = clamped
+        )
         _uiState.update { it.copy(compReleaseMs = clamped) }
     }
 
     fun setClarityMacroPercent(value: Float) {
         val clamped = value.coerceIn(0f, 100f)
         audioEngine.clarityMacroAmount = clamped
+        systemEffects.updateClarity(clamped)
         _uiState.update { it.copy(clarityMacroPercent = clamped, activePresetId = null) }
     }
 
@@ -409,17 +445,35 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     fun setHissRemovalPercent(value: Float) {
         val clamped = value.coerceIn(0f, 100f)
         audioEngine.hissRemoval = clamped
+        audioEngine.updateDspCoefficients()
+        systemEffects.updateNoiseReduction(
+            hissRemovalPercent = clamped,
+            deHumEnabled = _uiState.value.deHumEnabled,
+            humFrequency = _uiState.value.humFrequency
+        )
         _uiState.update { it.copy(hissRemovalPercent = clamped, activePresetId = null) }
     }
 
     fun toggleDeHum() {
         val current = !_uiState.value.deHumEnabled
         audioEngine.deHumEnabled = current
+        audioEngine.updateDspCoefficients()
+        systemEffects.updateNoiseReduction(
+            hissRemovalPercent = _uiState.value.hissRemovalPercent,
+            deHumEnabled = current,
+            humFrequency = _uiState.value.humFrequency
+        )
         _uiState.update { it.copy(deHumEnabled = current, activePresetId = null) }
     }
 
     fun setHumFrequency(freq: Int) {
         audioEngine.humFrequency = freq
+        audioEngine.updateDspCoefficients()
+        systemEffects.updateNoiseReduction(
+            hissRemovalPercent = _uiState.value.hissRemovalPercent,
+            deHumEnabled = _uiState.value.deHumEnabled,
+            humFrequency = freq
+        )
         _uiState.update { it.copy(humFrequency = freq) }
     }
 
@@ -439,36 +493,79 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     fun setReverbWet(percent: Float) {
         val clamped = percent.coerceIn(0f, 100f)
         audioEngine.reverbWet = clamped
+        systemEffects.updateReverb(
+            wetPercent = clamped,
+            roomSizePercent = _uiState.value.reverbRoomSizePercent,
+            dampingPercent = _uiState.value.reverbDampingPercent,
+            echoTimeMs = _uiState.value.echoTimeMs,
+            echoWetPercent = _uiState.value.echoWetPercent
+        )
         _uiState.update { it.copy(reverbWetPercent = clamped) }
     }
 
     fun setReverbRoomSize(percent: Float) {
         val clamped = percent.coerceIn(0f, 100f)
         audioEngine.reverbRoomSize = clamped
+        systemEffects.updateReverb(
+            wetPercent = _uiState.value.reverbWetPercent,
+            roomSizePercent = clamped,
+            dampingPercent = _uiState.value.reverbDampingPercent,
+            echoTimeMs = _uiState.value.echoTimeMs,
+            echoWetPercent = _uiState.value.echoWetPercent
+        )
         _uiState.update { it.copy(reverbRoomSizePercent = clamped) }
     }
 
     fun setReverbDamping(percent: Float) {
         val clamped = percent.coerceIn(0f, 100f)
         audioEngine.reverbDamping = clamped
+        systemEffects.updateReverb(
+            wetPercent = _uiState.value.reverbWetPercent,
+            roomSizePercent = _uiState.value.reverbRoomSizePercent,
+            dampingPercent = clamped,
+            echoTimeMs = _uiState.value.echoTimeMs,
+            echoWetPercent = _uiState.value.echoWetPercent
+        )
         _uiState.update { it.copy(reverbDampingPercent = clamped) }
     }
 
     fun setEchoWet(percent: Float) {
         val clamped = percent.coerceIn(0f, 100f)
         audioEngine.echoWet = clamped
+        systemEffects.updateReverb(
+            wetPercent = _uiState.value.reverbWetPercent,
+            roomSizePercent = _uiState.value.reverbRoomSizePercent,
+            dampingPercent = _uiState.value.reverbDampingPercent,
+            echoTimeMs = _uiState.value.echoTimeMs,
+            echoWetPercent = clamped
+        )
         _uiState.update { it.copy(echoWetPercent = clamped) }
     }
 
     fun setEchoTimeMs(timeMs: Int) {
         val clamped = timeMs.coerceIn(50, 1000)
         audioEngine.echoTimeMs = clamped
+        systemEffects.updateReverb(
+            wetPercent = _uiState.value.reverbWetPercent,
+            roomSizePercent = _uiState.value.reverbRoomSizePercent,
+            dampingPercent = _uiState.value.reverbDampingPercent,
+            echoTimeMs = clamped,
+            echoWetPercent = _uiState.value.echoWetPercent
+        )
         _uiState.update { it.copy(echoTimeMs = clamped) }
     }
 
     fun setEchoFeedback(percent: Float) {
         val clamped = percent.coerceIn(0f, 80f)
         audioEngine.echoFeedback = clamped
+        systemEffects.updateReverb(
+            wetPercent = _uiState.value.reverbWetPercent,
+            roomSizePercent = _uiState.value.reverbRoomSizePercent,
+            dampingPercent = _uiState.value.reverbDampingPercent,
+            echoTimeMs = _uiState.value.echoTimeMs,
+            echoWetPercent = _uiState.value.echoWetPercent,
+            echoFeedbackPercent = clamped
+        )
         _uiState.update { it.copy(echoFeedbackPercent = clamped) }
     }
 
@@ -518,7 +615,15 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val updatedEq = current.eqGains.toMutableMap()
             updatedEq[PlainBand.WARMTH] = lofiWarmth
             updatedEq[PlainBand.AIR] = lofiAir
+            audioEngine.updateDspCoefficients()
             systemEffects.updatePlainEqGains(updatedEq)
+            systemEffects.updateReverb(
+                wetPercent = lofiReverbWet,
+                roomSizePercent = lofiReverbRoom,
+                dampingPercent = lofiReverbDamp,
+                echoTimeMs = lofiEchoTime,
+                echoWetPercent = lofiEchoWet
+            )
 
             _uiState.update {
                 it.copy(
@@ -555,7 +660,15 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val restoredEq = current.eqGains.toMutableMap()
             restoredEq[PlainBand.WARMTH] = preLofiWarmth
             restoredEq[PlainBand.AIR] = preLofiAir
+            audioEngine.updateDspCoefficients()
             systemEffects.updatePlainEqGains(restoredEq)
+            systemEffects.updateReverb(
+                wetPercent = preLofiReverbWet,
+                roomSizePercent = preLofiReverbRoom,
+                dampingPercent = preLofiReverbDamp,
+                echoTimeMs = preLofiEchoTime,
+                echoWetPercent = preLofiEchoWet
+            )
 
             _uiState.update {
                 it.copy(
@@ -657,9 +770,11 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         systemEffects.updatePunch(punch)
 
         audioEngine.clarityMacroAmount = clarityMacro
+        systemEffects.updateClarity(clarityMacro)
         audioEngine.hissRemoval = hiss
         audioEngine.deHumEnabled = deHum
         audioEngine.deCrackleEnabled = deCrackle
+        audioEngine.updateDspCoefficients()
 
         _uiState.update {
             it.copy(
@@ -702,6 +817,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.deCrackleEnabled = preset.deCrackleEnabled
         audioEngine.vintageMode = false
         audioEngine.wowFlutterDepth = 0f
+        audioEngine.updateDspCoefficients()
 
         _uiState.update {
             it.copy(
@@ -723,6 +839,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.vintageMode = enabled
         audioEngine.wowFlutterDepth = if (enabled) _uiState.value.wowFlutterDepth else 0f
         audioEngine.vintageNoiseLevel = if (enabled) _uiState.value.vintageNoiseLevel else 0f
+        systemEffects.updateVintageMode(enabled)
 
         _uiState.update {
             it.copy(
@@ -752,6 +869,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         updatedEq[PlainBand.WARMTH] = device.defaultWarmth
 
         audioEngine.eqGains[PlainBand.WARMTH] = device.defaultWarmth
+        audioEngine.updateDspCoefficients()
         systemEffects.updatePlainEqGains(updatedEq)
         systemEffects.updateSpace(device.defaultSpace, _uiState.value.isMonoDetected)
         systemEffects.updatePunch(device.defaultPunch)
@@ -830,6 +948,10 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val echoTime = json.optInt("echoTimeMs", 320)
             val echoFeedback = json.optDouble("echoFeedbackPercent", 30.0).toFloat()
             val echoWet = json.optDouble("echoWetPercent", 0.0).toFloat()
+            val compThreshold = json.optDouble("compThresholdDb", -18.0).toFloat()
+            val compRatio = json.optDouble("compRatio", 2.5).toFloat()
+            val compAttack = json.optDouble("compAttackMs", 15.0).toFloat()
+            val compRelease = json.optDouble("compReleaseMs", 80.0).toFloat()
             val speed = json.optDouble("playbackSpeed", 1.0).toFloat()
             val lofi = json.optBoolean("isLofiMode", false)
 
@@ -840,18 +962,37 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             audioEngine.punchAmount = punch
             systemEffects.updatePunch(punch)
             audioEngine.clarityMacroAmount = clarity
+            systemEffects.updateClarity(clarity)
             audioEngine.loudnessBoost = loudness
             systemEffects.updateLoudness(loudness)
             audioEngine.hissRemoval = hiss
             audioEngine.deHumEnabled = deHum
             audioEngine.deCrackleEnabled = deCrackle
+            audioEngine.compThresholdDb = compThreshold
+            audioEngine.compRatio = compRatio
+            audioEngine.compAttackMs = compAttack
+            audioEngine.compReleaseMs = compRelease
+            systemEffects.updateDynamicsCompressor(
+                thresholdDb = compThreshold,
+                ratio = compRatio,
+                attackMs = compAttack,
+                releaseMs = compRelease
+            )
             audioEngine.reverbWet = reverbWet
             audioEngine.reverbRoomSize = reverbRoom
             audioEngine.reverbDamping = reverbDamp
             audioEngine.echoTimeMs = echoTime
             audioEngine.echoFeedback = echoFeedback
             audioEngine.echoWet = echoWet
+            systemEffects.updateReverb(
+                wetPercent = reverbWet,
+                roomSizePercent = reverbRoom,
+                dampingPercent = reverbDamp,
+                echoTimeMs = echoTime,
+                echoWetPercent = echoWet
+            )
             audioEngine.setPlaybackSpeed(speed)
+            audioEngine.updateDspCoefficients()
 
             _uiState.update {
                 it.copy(
@@ -863,6 +1004,10 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     hissRemovalPercent = hiss,
                     deHumEnabled = deHum,
                     deCrackleEnabled = deCrackle,
+                    compThresholdDb = compThreshold,
+                    compRatio = compRatio,
+                    compAttackMs = compAttack,
+                    compReleaseMs = compRelease,
                     reverbWetPercent = reverbWet,
                     reverbRoomSizePercent = reverbRoom,
                     reverbDampingPercent = reverbDamp,
@@ -888,8 +1033,11 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         val isBoost = Random.nextBoolean()
         val delta = if (isBoost) 6f else -6f
 
-        audioEngine.eqGains.forEach { (b, _) -> audioEngine.eqGains[b] = 0f }
-        audioEngine.eqGains[chosen] = delta
+        val map = PlainBand.entries.associateWith { if (it == chosen) delta else 0f }
+        audioEngine.eqGains.clear()
+        audioEngine.eqGains.putAll(map)
+        audioEngine.updateDspCoefficients()
+        systemEffects.updatePlainEqGains(map)
 
         val challenge = GoldenEarChallenge(
             targetBand = chosen,
@@ -960,15 +1108,22 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.punchAmount = 0f
         systemEffects.updatePunch(0f)
         audioEngine.clarityMacroAmount = 0f
+        systemEffects.updateClarity(0f)
         audioEngine.loudnessBoost = 0f
         systemEffects.updateLoudness(0f)
         audioEngine.hissRemoval = 0f
         audioEngine.deHumEnabled = false
         audioEngine.deCrackleEnabled = false
         audioEngine.vintageMode = false
+        audioEngine.compThresholdDb = -18f
+        audioEngine.compRatio = 2.5f
+        audioEngine.compAttackMs = 15f
+        audioEngine.compReleaseMs = 80f
+        systemEffects.updateDynamicsCompressor(-18f, 2.5f, 15f, 80f)
         audioEngine.reverbWet = 0f
         audioEngine.echoWet = 0f
         audioEngine.setPlaybackSpeed(1.0f)
+        systemEffects.updateReverb(0f, 75f, 35f, 320, 0f)
 
         _uiState.update {
             it.copy(
@@ -981,6 +1136,10 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                 deHumEnabled = false,
                 deCrackleEnabled = false,
                 isVintageMode = false,
+                compThresholdDb = -18f,
+                compRatio = 2.5f,
+                compAttackMs = 15f,
+                compReleaseMs = 80f,
                 reverbWetPercent = 0f,
                 echoWetPercent = 0f,
                 playbackSpeed = 1.0f,
@@ -1007,6 +1166,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
 
     fun setSpatialRoomType(roomType: String) {
         audioEngine.spatialRoomType = roomType
+        systemEffects.updateSpatialRoom(roomType)
         _uiState.update {
             it.copy(
                 spatialRoomType = roomType,
@@ -1042,11 +1202,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
 
         audioEngine.spaceAmount = s.spacePercent
         systemEffects.updateSpace(s.spacePercent, s.isMonoDetected)
+        audioEngine.hrtfProfile = s.hrtfProfile
+        systemEffects.updateHrtfProfile(s.hrtfProfile)
 
         audioEngine.punchAmount = s.punchPercent
         systemEffects.updatePunch(s.punchPercent)
 
         audioEngine.clarityMacroAmount = s.clarityMacroPercent
+        systemEffects.updateClarity(s.clarityMacroPercent)
         audioEngine.loudnessBoost = s.loudnessPercent
         systemEffects.updateLoudness(s.loudnessPercent)
 
@@ -1054,15 +1217,27 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.deHumEnabled = s.deHumEnabled
         audioEngine.humFrequency = s.humFrequency
         audioEngine.deCrackleEnabled = s.deCrackleEnabled
+        systemEffects.updateNoiseReduction(s.hissRemovalPercent, s.deHumEnabled, s.humFrequency)
+
         audioEngine.vintageMode = s.isVintageMode
         audioEngine.wowFlutterDepth = s.wowFlutterDepth
         audioEngine.vintageNoiseLevel = s.vintageNoiseLevel
+        systemEffects.updateVintageMode(s.isVintageMode)
 
         audioEngine.compThresholdDb = s.compThresholdDb
         audioEngine.compRatio = s.compRatio
         audioEngine.compAttackMs = s.compAttackMs
         audioEngine.compReleaseMs = s.compReleaseMs
         audioEngine.limiterCeilingDb = s.limiterCeilingDb
+        systemEffects.updateDynamicsCompressor(
+            thresholdDb = s.compThresholdDb,
+            ratio = s.compRatio,
+            attackMs = s.compAttackMs,
+            releaseMs = s.compReleaseMs
+        )
+
+        audioEngine.spatialRoomType = s.spatialRoomType
+        systemEffects.updateSpatialRoom(s.spatialRoomType)
 
         audioEngine.reverbWet = s.reverbWetPercent
         audioEngine.reverbRoomSize = s.reverbRoomSizePercent
@@ -1070,7 +1245,16 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.echoWet = s.echoWetPercent
         audioEngine.echoTimeMs = s.echoTimeMs
         audioEngine.echoFeedback = s.echoFeedbackPercent
+        systemEffects.updateReverb(
+            wetPercent = s.reverbWetPercent,
+            roomSizePercent = s.reverbRoomSizePercent,
+            dampingPercent = s.reverbDampingPercent,
+            echoTimeMs = s.echoTimeMs,
+            echoWetPercent = s.echoWetPercent,
+            echoFeedbackPercent = s.echoFeedbackPercent
+        )
         audioEngine.setPlaybackSpeed(s.playbackSpeed)
+        audioEngine.updateDspCoefficients()
     }
 
     override fun onCleared() {

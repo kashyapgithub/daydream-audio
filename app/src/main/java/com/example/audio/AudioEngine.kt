@@ -75,6 +75,7 @@ class AudioEngine {
     var humFrequency: Int = 60 // 50Hz or 60Hz mains
     var deCrackleEnabled: Boolean = false
     var spatialRoomType: String = "Natural" // "Natural", "Intimate Studio", "Concert Hall", "Cathedral" (PRD 6.7a)
+    var hrtfProfile: String = "Natural" // "Narrow", "Natural", "Wide" (PRD 6.3)
 
     // Advanced Compressor & Limiter Parameters (PRD 8.3)
     var compThresholdDb: Float = -18f
@@ -150,6 +151,46 @@ class AudioEngine {
     private var noiseFloorEstimate = 0.02
     private var hissDetectorEnvelope = 0.0
 
+    // Musical Sequencer State for Demo Audio Playback (allows audible transients for Reverb, Echo & Tempo)
+    private var seqTimer = 0.0
+    private var seqStep = 0
+    private var noteEnvelope = 0.0
+    private var harmonicPhase = 0.0
+    private var subPhase = 0.0
+
+    // Melodic progressions for each demo track (BPM ~ 107 baseline)
+    // 0: "Golden Hour Memories" (70s Acoustic Guitar Arpeggios)
+    private val acousticProgression = doubleArrayOf(
+        220.00, 261.63, 329.63, 440.00, 329.63, 261.63,
+        174.61, 220.00, 261.63, 349.23, 261.63, 220.00,
+        130.81, 164.81, 196.00, 261.63, 196.00, 164.81,
+        196.00, 246.94, 293.66, 392.00, 293.66, 246.94
+    )
+
+    // 1: "Midnight Blue Lounge" (60s Vinyl - Walking Jazz Bass & Mellow Chords)
+    private val jazzProgression = doubleArrayOf(
+        146.83, 174.61, 220.00, 293.66, 261.63, 220.00, 174.61, 146.83,
+        98.00, 123.47, 146.83, 196.00, 246.94, 196.00, 146.83, 123.47,
+        130.81, 164.81, 196.00, 246.94, 261.63, 196.00, 164.81, 130.81,
+        110.00, 138.59, 164.81, 220.00, 207.65, 174.61, 146.83, 123.47
+    )
+
+    // 2: "Neon Dreams" (90s Broadcast - Punchy Synth Bassline & Riff)
+    private val synthProgression = doubleArrayOf(
+        261.63, 261.63, 329.63, 392.00, 523.25, 392.00, 329.63, 261.63,
+        220.00, 220.00, 261.63, 329.63, 440.00, 329.63, 261.63, 220.00,
+        174.61, 174.61, 220.00, 261.63, 349.23, 261.63, 220.00, 174.61,
+        196.00, 196.00, 246.94, 293.66, 392.00, 293.66, 246.94, 196.00
+    )
+
+    // 3: "Lost in the Attic" (Cassette Voice Memo - Nostalgic Piano Motif)
+    private val lofiProgression = doubleArrayOf(
+        174.61, 220.00, 261.63, 329.63, 261.63, 220.00,
+        164.81, 196.00, 246.94, 293.66, 246.94, 196.00,
+        146.83, 174.61, 220.00, 261.63, 220.00, 174.61,
+        130.81, 164.81, 196.00, 246.94, 196.00, 164.81
+    )
+
     // Vintage Wow & Flutter Fractional Delay Line (PRD 6.13 & 8.3)
     private val vintageDelaySize = 2048
     private val vintageDelayL = DoubleArray(vintageDelaySize)
@@ -219,9 +260,9 @@ class AudioEngine {
 
         fun process(input: Double, feedback: Double = 0.5): Double {
             val bufOut = buffer[index]
-            val output = -input + bufOut
-            val next = input + bufOut * feedback
-            buffer[index] = if (abs(next) < 1e-15) 0.0 else next
+            val w = input + bufOut * feedback
+            val output = -feedback * w + bufOut
+            buffer[index] = if (abs(w) < 1e-15) 0.0 else w
             index = (index + 1) % size
             return if (abs(output) < 1e-15) 0.0 else output
         }
@@ -660,8 +701,13 @@ class AudioEngine {
         val roomR = delayBufferR[roomReadIndex] * reflectionCoeff * widthFactor
 
         // Transaural crossfeed decorrelation + binaural contralateral room simulation
-        val outL = inL + (delayedR - inR) * (widthFactor * 0.45) + roomR
-        val outR = inR + (delayedL - inL) * (widthFactor * 0.45) + roomL
+        val hrtfCoeff = when (hrtfProfile) {
+            "Narrow" -> 0.25
+            "Wide" -> 0.70
+            else -> 0.45
+        }
+        val outL = inL + (delayedR - inR) * (widthFactor * hrtfCoeff) + roomR
+        val outR = inR + (delayedL - inL) * (widthFactor * hrtfCoeff) + roomL
 
         return Pair(outL, outR)
     }
@@ -695,10 +741,6 @@ class AudioEngine {
     }
 
     fun processStereoEcho(inL: Double, inR: Double): Pair<Double, Double> {
-        if (echoWet <= 0f) {
-            return Pair(inL, inR)
-        }
-
         val delaySamples = ((echoTimeMs / 1000.0) * SAMPLE_RATE).toInt().coerceIn(1, echoBufferSize - 1)
         val readIdx = (echoWriteIndex - delaySamples + echoBufferSize) % echoBufferSize
 
@@ -723,6 +765,10 @@ class AudioEngine {
         echoWriteIndex = (echoWriteIndex + 1) % echoBufferSize
 
         val wetFactor = (echoWet / 100.0).coerceIn(0.0, 1.0)
+        if (wetFactor <= 0f) {
+            return Pair(inL, inR)
+        }
+
         val outL = inL * (1.0 - wetFactor * 0.35) + delayedL * (wetFactor * 1.1)
         val outR = inR * (1.0 - wetFactor * 0.35) + delayedR * (wetFactor * 1.1)
 
@@ -730,13 +776,14 @@ class AudioEngine {
     }
 
     fun processStereoReverb(inL: Double, inR: Double): Pair<Double, Double> {
-        if (reverbWet <= 0f) {
+        val wetGain = (reverbWet / 100.0).coerceIn(0.0, 1.0)
+        if (wetGain <= 0f) {
             return Pair(inL, inR)
         }
 
         val feedback = (0.70 + (reverbRoomSize / 100.0) * 0.28).coerceIn(0.70, 0.98)
         val damping = (0.05 + (reverbDamping / 100.0) * 0.65).coerceIn(0.05, 0.70)
-        val monoIn = (inL + inR) * 0.015
+        val monoIn = (inL + inR) * 0.02
 
         var outL = 0.0
         var outR = 0.0
@@ -756,9 +803,8 @@ class AudioEngine {
         val wetL = outL * wet1 + outR * wet2
         val wetR = outR * wet1 + outL * wet2
 
-        val wetGain = (reverbWet / 100.0).coerceIn(0.0, 1.0)
-        val finalL = inL * (1.0 - wetGain * 0.4) + wetL * (wetGain * 1.6)
-        val finalR = inR * (1.0 - wetGain * 0.4) + wetR * (wetGain * 1.6)
+        val finalL = inL * (1.0 - wetGain * 0.35) + wetL * (wetGain * 1.4)
+        val finalR = inR * (1.0 - wetGain * 0.35) + wetR * (wetGain * 1.4)
 
         return Pair(finalL, finalR)
     }
@@ -800,35 +846,58 @@ class AudioEngine {
     }
 
     private fun synthesizeSourceSample(track: DemoTrack): Pair<Double, Double> {
-        val freq = track.baseFrequency.toDouble()
+        val noteLengthSeconds = 0.28
+        seqTimer += (1.0 / SAMPLE_RATE) * playbackSpeed
+        if (seqTimer >= noteLengthSeconds) {
+            seqTimer = 0.0
+            seqStep++
+            noteEnvelope = 1.0 // Trigger pluck attack
+        } else {
+            noteEnvelope *= 0.99965 // Natural acoustic / pluck exponential decay
+        }
+
+        val notes = when (currentTrackIndex) {
+            0 -> acousticProgression
+            1 -> jazzProgression
+            2 -> synthProgression
+            else -> lofiProgression
+        }
+
+        val currentNoteFreq = notes[seqStep % notes.size]
         val dt = 2.0 * PI / SAMPLE_RATE
 
-        phase += freq * dt
+        phase += currentNoteFreq * dt
         if (phase > 2.0 * PI * 100) phase -= 2.0 * PI * 100
 
-        val sub = sin(phase * 0.5) * 0.22
-        val fundamental = sin(phase) * 0.35
-        val harmonic1 = sin(phase * 1.5) * 0.18
-        val harmonic2 = sin(phase * 1.2) * 0.15
-        val overtone = sin(phase * 3.0) * 0.08
+        harmonicPhase += currentNoteFreq * 2.0 * dt
+        if (harmonicPhase > 2.0 * PI * 100) harmonicPhase -= 2.0 * PI * 100
 
-        val rawClean = sub + fundamental + harmonic1 + harmonic2 + overtone
+        subPhase += currentNoteFreq * 0.5 * dt
+        if (subPhase > 2.0 * PI * 100) subPhase -= 2.0 * PI * 100
+
+        // Plucked note synthesis with body, fundamental, harmonic, and sub-warmth
+        val fundamental = sin(phase) * 0.38
+        val harmonic = sin(harmonicPhase) * 0.18
+        val sub = sin(subPhase) * 0.22
+        val overtone = sin(phase * 3.0) * 0.08
+        val rawClean = (fundamental + harmonic + sub + overtone) * noteEnvelope
 
         var noise = 0.0
         when (track.noiseType) {
-            "cassette" -> noise = (Random.nextDouble() - 0.5) * 0.06
+            "cassette" -> noise = (Random.nextDouble() - 0.5) * 0.04
             "vinyl" -> {
-                val hum = sin(phase * (60.0 / freq)) * 0.04
-                val crackle = if (Random.nextDouble() < 0.001) (Random.nextDouble() - 0.5) * 0.7 else 0.0
-                noise = hum + crackle + (Random.nextDouble() - 0.5) * 0.02
+                val hum = sin(phase * (60.0 / currentNoteFreq)) * 0.035
+                val crackle = if (Random.nextDouble() < 0.0008) (Random.nextDouble() - 0.5) * 0.6 else 0.0
+                noise = hum + crackle + (Random.nextDouble() - 0.5) * 0.015
             }
-            "radio" -> noise = (Random.nextDouble() - 0.5) * 0.03
-            "tape_heavy" -> noise = (Random.nextDouble() - 0.5) * 0.11
+            "radio" -> noise = (Random.nextDouble() - 0.5) * 0.025
+            "tape_heavy" -> noise = (Random.nextDouble() - 0.5) * 0.07
         }
 
-        val total = rawClean + noise
-        val left = total + sin(phase * 0.51) * 0.05
-        val right = total + cos(phase * 0.49) * 0.05
+        // Slight natural stereo spread based on arpeggio step
+        val pan = ((seqStep % 4) - 1.5) * 0.15
+        val left = (rawClean * (1.0 - pan) + noise)
+        val right = (rawClean * (1.0 + pan) + noise)
         return Pair(left, right)
     }
 

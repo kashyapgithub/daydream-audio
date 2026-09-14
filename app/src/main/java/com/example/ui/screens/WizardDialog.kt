@@ -66,7 +66,7 @@ fun WizardDiagnosisDialog(
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = GlassTokens.AccentStart,
+                        tint = GlassTokens.AccentEnd,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -194,7 +194,7 @@ fun WizardDiagnosisDialog(
                 Text("Cancel", color = GlassTokens.TextSecondary)
             }
         },
-        containerColor = Color(0xFF1B1729),
+        containerColor = Color(0xFF101522),
         shape = GlassTokens.radiusLg
     )
 }

@@ -143,7 +143,7 @@ private fun OnboardingWelcomeStep(onNext: () -> Unit) {
             Text(
                 text = "Sound the way you remember it.",
                 fontSize = 15.sp,
-                color = GlassTokens.AccentStart,
+                color = GlassTokens.AccentEnd,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -229,7 +229,7 @@ private fun OnboardingDeviceStep(
                 text = uiState.currentDevice.displayName,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = GlassTokens.AccentStart,
+                color = GlassTokens.AccentEnd,
                 modifier = Modifier.padding(top = 4.dp)
             )
 
@@ -285,7 +285,7 @@ private fun OnboardingWizardStep(
                 Icon(
                     imageVector = Icons.Default.AutoAwesome,
                     contentDescription = null,
-                    tint = GlassTokens.AccentStart,
+                    tint = GlassTokens.AccentEnd,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -321,7 +321,7 @@ private fun OnboardingWizardStep(
                             text = complaint.label,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = GlassTokens.AccentStart
+                            color = GlassTokens.AccentEnd
                         )
                         Text(
                             text = complaint.description,
