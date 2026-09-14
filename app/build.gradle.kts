@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aistudio.daydreamaudio.rqtx"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -17,12 +17,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        getByName("debug") {
-            storeFile = file("${rootDir}/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+    val customDebugKeystore = file("${rootDir}/debug.keystore")
+    if (customDebugKeystore.exists()) {
+        signingConfigs {
+            getByName("debug") {
+                storeFile = customDebugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 
@@ -35,7 +38,9 @@ android {
             )
         }
         debug {
-            signingConfig = signingConfigs.getByName("debug")
+            if (customDebugKeystore.exists()) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 
