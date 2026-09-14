@@ -211,11 +211,21 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.toggleReduceMotion() },
                         testTag = "setting_reduce_motion"
                     )
+
+                    // Re-run Onboarding Tour
+                    Button(
+                        onClick = { viewModel.restartOnboarding() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.10f)),
+                        shape = GlassTokens.radiusPill,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Re-run Onboarding Tour", color = GlassTokens.TextPrimary, fontSize = 13.sp)
+                    }
                 }
             }
         }
 
-        // Section 3: Signal Chain Architecture (PRD 8.1)
+        // Section 3: Signal Chain Architecture (PRD 8.1 & 8.3)
         item {
             Box(
                 modifier = Modifier
@@ -246,13 +256,55 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
                     )
 
+                    // Mains Hum Region Selector (50Hz vs 60Hz)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "De-Hum Mains Frequency",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "50Hz (UK/EU/India/Asia) vs 60Hz (Americas)",
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(50, 60).forEach { freq ->
+                                val isSelected = uiState.humFrequency == freq
+                                Box(
+                                    modifier = Modifier
+                                        .clip(GlassTokens.radiusPill)
+                                        .background(if (isSelected) GlassTokens.AccentStart else Color.White.copy(alpha = 0.08f))
+                                        .clickable { viewModel.setHumFrequency(freq) }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "${freq}Hz",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else GlassTokens.TextSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     val stages = listOf(
-                        "1. Noise Reduction (Hiss, De-Hum 60Hz, De-Crackle)",
-                        "2. Equalizer (5-Band Peaking & Shelving IIR)",
-                        "3. Clarity Macro (Harmonic waveshaping & presence)",
-                        "4. Dynamics / Punch (RMS Soft-Knee Compressor)",
-                        "5. Virtualizer / Space (Crossfeed decorrelation)",
-                        "6. Loudness Booster + True-Peak Soft Limiter"
+                        "1. Noise Reduction (Adaptive High-Shelf Gate, Multi-Harmonic De-Hum, Derivative Spike De-Crackle)",
+                        "2. Equalizer (5-Band Peaking & Shelving IIR / 10-Band Parametric EQ)",
+                        "3. Clarity Macro (3-Band Crossover, High-Mid Harmonic Saturation & Dynamic De-Harsher)",
+                        "4. Dynamics / Punch (RMS Soft-Knee Compressor with Makeup Gain)",
+                        "5. Virtualizer / Space (Transaural Crossfeed Decorrelation with Mono Capping)",
+                        "6. Loudness Booster + True-Peak Soft Limiter (Anti-Clipping)"
                     )
 
                     stages.forEach { stage ->

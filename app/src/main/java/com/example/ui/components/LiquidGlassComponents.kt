@@ -501,10 +501,10 @@ fun BandTooltipDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
                 shape = GlassTokens.radiusPill
             ) {
-                Text("Got It", color = Color.White)
+                Text("Got It", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
-        containerColor = Color(0xFF1E1A2E),
+        containerColor = Color(0xFF191626),
         shape = GlassTokens.radiusLg
     )
 }

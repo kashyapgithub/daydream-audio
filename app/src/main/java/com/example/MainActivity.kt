@@ -49,10 +49,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.audio.SystemAudioEffectManager
 import com.example.ui.components.NowPlayingGlassBar
 import com.example.ui.components.SonicGlassBackground
 import com.example.ui.screens.AdvancedModeScreen
 import com.example.ui.screens.GoldenEarScreen
+import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SimpleModeScreen
 import com.example.ui.screens.TimeMachineScreen
@@ -70,6 +72,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Hook global audio session 0 for system-wide baseline output
+        SystemAudioEffectManager.instance.openSession(this, 0, "Global System Output")
+
         setContent {
             val viewModel: DaydreamViewModel = viewModel()
             val uiState by viewModel.uiState.collectAsState()
@@ -86,10 +91,17 @@ class MainActivity : ComponentActivity() {
                     reduceGlass = uiState.reduceGlass,
                     reduceMotion = uiState.reduceMotion
                 ) {
-                    Scaffold(
-                        containerColor = Color.Transparent,
-                        contentWindowInsets = WindowInsets.statusBars,
-                        bottomBar = {
+                    if (!uiState.isOnboardingCompleted) {
+                        OnboardingScreen(
+                            viewModel = viewModel,
+                            uiState = uiState,
+                            onComplete = { viewModel.completeOnboarding() }
+                        )
+                    } else {
+                        Scaffold(
+                            containerColor = Color.Transparent,
+                            contentWindowInsets = WindowInsets.statusBars,
+                            bottomBar = {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -183,6 +195,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                    }
                     }
 
                     // Diagnostic Wizard Modal Dialog

@@ -57,12 +57,33 @@ enum class PlainBand(
 }
 
 /**
- * Advanced 10-band parametric band
+ * Advanced 10-band parametric band with plain-language anchor (PRD 6.2 & 8.3)
  */
 data class ParametricBand(
     val hz: Int,
+    val anchorLabel: String,
     val gainDb: Float = 0f,
-    val q: Float = 1.0f
+    val q: Float = 0.8f
+)
+
+/**
+ * Shareable full-chain preset bundle format (PRD 6.2 & FR-12)
+ */
+data class PresetExportBundle(
+    val name: String,
+    val description: String,
+    val eqGains: Map<String, Float>, // Band or Hz -> Gain
+    val spacePercent: Float,
+    val punchPercent: Float,
+    val clarityMacroPercent: Float,
+    val loudnessPercent: Float,
+    val hissRemovalPercent: Float,
+    val deHumEnabled: Boolean,
+    val deCrackleEnabled: Boolean,
+    val compThresholdDb: Float = -18f,
+    val compRatio: Float = 2.5f,
+    val compAttackMs: Float = 20f,
+    val compReleaseMs: Float = 150f
 )
 
 /**

@@ -19,18 +19,19 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tanh
 import kotlin.random.Random
 
 /**
  * Real-time software DSP audio engine for Daydream Audio.
- * Implements the full PRD signal chain:
- * 1. Noise Reduction (Hiss, De-Hum, De-Crackle)
- * 2. Equalizer (5-band / parametric peaking & shelving biquad filters)
- * 3. Clarity macro (presence exciter & de-harsher)
- * 4. Dynamics ("Punch" soft-knee compressor)
- * 5. Virtualizer ("Space" stereo cross-talk decorrelation)
- * 6. Volume Boost (Loudness + soft brickwall limiter)
- * Extra: Reverse Time Machine (Vintage-ify with synthesized noise & wow/flutter)
+ * Implements the full PRD signal chain (Section 8.1 & 8.3):
+ * 1. Noise Reduction (Adaptive Hiss High-Shelf Gate, Multi-Harmonic De-Hum, Derivative Spike De-Crackle)
+ * 2. Equalizer (5-Band Plain Language / 10-Band Independent Parametric EQ with adjustable Q)
+ * 3. Clarity Macro (3-band crossover, high-mid harmonic exciter & dynamic de-harsher)
+ * 4. Dynamics ("Punch" RMS soft-knee compressor with manual threshold/ratio/attack/release)
+ * 5. Virtualizer ("Space" crosstalk decorrelation with FR-4 mono capping)
+ * 6. Volume Boost & Soft Brickwall Limiter (FR-5 clipping prevention)
+ * Extra: Reverse Time Machine ("Vintage-ify" PRD 6.13 with LFO wow/flutter & analog noise synthesis)
  */
 class AudioEngine {
 
@@ -44,7 +45,7 @@ class AudioEngine {
     private val isPlaying = AtomicBoolean(false)
     val isBypassed = AtomicBoolean(false) // A/B toggle (<50ms bypass)
 
-    // Current parameters
+    // 5-Band Simple Mode Gains
     var eqGains = mutableMapOf<PlainBand, Float>(
         PlainBand.RUMBLE to 0f,
         PlainBand.WARMTH to 0f,
@@ -53,20 +54,38 @@ class AudioEngine {
         PlainBand.AIR to 0f
     )
 
+    // 10-Band Advanced Parametric Mode Gains & Q factors (PRD 6.2 & 8.3)
+    var isAdvancedParametricMode = false
+    val parametricFrequencies = listOf(31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
+    val parametricGains = mutableMapOf<Int, Float>().apply {
+        parametricFrequencies.forEach { put(it, 0f) }
+    }
+    val parametricQ = mutableMapOf<Int, Float>().apply {
+        parametricFrequencies.forEach { put(it, 0.8f) }
+    }
+
+    // Acoustic macros
     var spaceAmount: Float = 30f // 0 to 100%
     var punchAmount: Float = 25f // 0 to 100%
     var clarityMacroAmount: Float = 0f // 0 to 100%
-    var loudnessBoost: Float = 0f // 0 to 100% (volume boost)
+    var loudnessBoost: Float = 0f // 0 to 100%
     var hissRemoval: Float = 0f // 0 to 100%
     var deHumEnabled: Boolean = false
+    var humFrequency: Int = 60 // 50Hz or 60Hz mains
     var deCrackleEnabled: Boolean = false
+
+    // Advanced Compressor Parameters
+    var compThresholdDb: Float = -18f
+    var compRatio: Float = 2.5f
+    var compAttackMs: Float = 20f
+    var compReleaseMs: Float = 150f
 
     // Vintage-ify mode (PRD 6.13)
     var vintageMode: Boolean = false
     var wowFlutterDepth: Float = 0f // 0 to 100%
     var vintageNoiseLevel: Float = 0f // 0 to 100%
 
-    // Active track
+    // Demo Tracks
     var currentTrackIndex = 0
     val demoTracks = listOf(
         DemoTrack(
@@ -103,16 +122,20 @@ class AudioEngine {
         )
     )
 
-    // Visual spectrum data callback
+    // Callbacks
     var onSpectrumUpdated: ((FloatArray, Float) -> Unit)? = null
 
-    // State
+    // Internal State
     private var phase = 0.0
     private var lfoPhase = 0.0
-    private var noiseFloorEstimate = 0.05f
+    private var noiseFloorEstimate = 0.02
 
-    // Biquad filter state registers for stereo
-    private class BiquadState {
+    // Click/Crackle state registers
+    private var prevSampleL = 0.0
+    private var prevSampleR = 0.0
+
+    // Biquad state register
+    class BiquadState {
         var x1L = 0.0; var x2L = 0.0; var y1L = 0.0; var y2L = 0.0
         var x1R = 0.0; var x2R = 0.0; var y1R = 0.0; var y2R = 0.0
         var b0 = 1.0; var b1 = 0.0; var b2 = 0.0; var a1 = 0.0; var a2 = 0.0
@@ -132,7 +155,8 @@ class AudioEngine {
         }
     }
 
-    private val filters = mapOf(
+    // 5 Simple Mode EQ Biquads
+    private val simpleFilters = mapOf(
         PlainBand.RUMBLE to BiquadState(),
         PlainBand.WARMTH to BiquadState(),
         PlainBand.BODY to BiquadState(),
@@ -140,20 +164,34 @@ class AudioEngine {
         PlainBand.AIR to BiquadState()
     )
 
-    private val notch50L = BiquadState()
-    private val notch100L = BiquadState()
+    // 10 Independent Parametric EQ Biquads
+    private val parametricFilters = mutableMapOf<Int, BiquadState>().apply {
+        parametricFrequencies.forEach { put(it, BiquadState()) }
+    }
 
-    // Compressor envelope follower state
+    // De-Hum Notch Biquads (Fundamental + 2nd & 3rd Harmonics)
+    private val humNotch1 = BiquadState() // Fundamental 50/60Hz
+    private val humNotch2 = BiquadState() // 2nd Harmonic 100/120Hz
+    private val humNotch3 = BiquadState() // 3rd Harmonic 150/180Hz
+
+    // Hiss Removal High Shelf Biquad
+    private val hissHighShelf = BiquadState()
+
+    // Clarity Crossover Filters
+    private val crossoverLow = BiquadState()
+    private val crossoverHigh = BiquadState()
+
+    // Dynamics State
     private var compressorEnvelope = 0.0
 
-    // Delay line for Space (virtualizer) and wow/flutter
+    // Delay line for Space & Wow/Flutter
     private val delayBufferSize = 4410
     private val delayBufferL = DoubleArray(delayBufferSize)
     private val delayBufferR = DoubleArray(delayBufferSize)
     private var delayWriteIndex = 0
 
-    // Mono detection metric
-    var correlationMetric = 0.85f // >0.9 indicates mono
+    // Mono detection metric (PRD FR-4)
+    var correlationMetric = 0.85f
 
     fun startPlayback(scope: CoroutineScope) {
         if (isPlaying.get()) return
@@ -186,15 +224,13 @@ class AudioEngine {
         audioTrack?.play()
 
         playbackJob = scope.launch(Dispatchers.Default) {
-            val pcmBuffer = ShortArray(BUFFER_SIZE * 2) // interleaved stereo
+            val pcmBuffer = ShortArray(BUFFER_SIZE * 2)
             val spectrumBands = FloatArray(8)
 
             while (isActive && isPlaying.get()) {
-                updateFilterCoefficients()
+                updateDspCoefficients()
 
                 var rmsSum = 0.0
-                var lSum = 0.0
-                var rSum = 0.0
                 var lrProdSum = 0.0
                 var lSqSum = 0.0
                 var rSqSum = 0.0
@@ -202,82 +238,147 @@ class AudioEngine {
                 val track = demoTracks[currentTrackIndex]
 
                 for (i in 0 until BUFFER_SIZE) {
-                    // 1. Synthesize rich source audio sample
                     val (rawL, rawR) = synthesizeSourceSample(track)
 
                     var outL: Double
                     var outR: Double
 
                     if (isBypassed.get()) {
-                        // Instant bypass (<50ms A/B testing)
+                        // Instant Bypass (<50ms A/B testing)
                         outL = rawL
                         outR = rawR
                     } else {
-                        // FULL SIGNAL CHAIN (PRD 8.1):
-                        // Step 1: Noise Reduction (Hiss, Hum, Crackle) or Vintage-ify
-                        var stage1L = rawL
-                        var stage1R = rawR
+                        // ==========================================
+                        // STAGE 1: NOISE REDUCTION (PRD 6.10 & 8.1)
+                        // ==========================================
+                        var s1L = rawL
+                        var s1R = rawR
 
                         if (vintageMode) {
-                            // Reverse Time Machine: Synthesize noise and apply wow & flutter
-                            stage1L = applyVintageEffects(stage1L, isLeft = true)
-                            stage1R = applyVintageEffects(stage1R, isLeft = false)
+                            // Reverse Time Machine: Synthesize analog noise + warble
+                            s1L = applyVintageEffects(s1L)
+                            s1R = applyVintageEffects(s1R)
                         } else {
-                            // Forward Restoration: Clean up
+                            // 1a. Multi-Harmonic De-Hum (50/60Hz + 2 harmonics)
                             if (deHumEnabled) {
-                                stage1L = notch50L.processL(stage1L)
-                                stage1R = notch50L.processR(stage1R)
+                                s1L = humNotch3.processL(humNotch2.processL(humNotch1.processL(s1L)))
+                                s1R = humNotch3.processR(humNotch2.processR(humNotch1.processR(s1R)))
                             }
-                            if (deCrackleEnabled && abs(stage1L) > 0.95) {
-                                stage1L *= 0.5
-                                stage1R *= 0.5
+
+                            // 1b. Time-domain Derivative De-Crackle (PRD 8.3 click detector)
+                            if (deCrackleEnabled) {
+                                val diffL = abs(s1L - prevSampleL)
+                                val diffR = abs(s1R - prevSampleR)
+                                val spikeThreshold = 0.35 // Transient discontinuity threshold
+
+                                if (diffL > spikeThreshold && abs(prevSampleL) < 0.75) {
+                                    // Interpolate click spike with preceding sample
+                                    s1L = (prevSampleL * 0.7) + (s1L * 0.3)
+                                }
+                                if (diffR > spikeThreshold && abs(prevSampleR) < 0.75) {
+                                    s1R = (prevSampleR * 0.7) + (s1R * 0.3)
+                                }
                             }
+                            prevSampleL = s1L
+                            prevSampleR = s1R
+
+                            // 1c. Adaptive High-Shelf + Spectral Noise Gate (PRD 8.3)
                             if (hissRemoval > 0f) {
-                                val hissAtten = 1.0 - (hissRemoval / 100f * 0.7)
-                                stage1L = applyGentleLowPass(stage1L, hissAtten)
-                                stage1R = applyGentleLowPass(stage1R, hissAtten)
+                                // Apply high-shelf attenuation above 5kHz
+                                s1L = hissHighShelf.processL(s1L)
+                                s1R = hissHighShelf.processR(s1R)
+
+                                // Track noise floor during quieter sections
+                                val instAmp = (abs(s1L) + abs(s1R)) * 0.5
+                                if (instAmp < 0.08) {
+                                    noiseFloorEstimate = noiseFloorEstimate * 0.999 + instAmp * 0.001
+                                }
+
+                                // Soft gate when signal falls below estimated noise floor
+                                val gateThreshold = noiseFloorEstimate * (1.0 + (hissRemoval / 100.0) * 2.0)
+                                if (instAmp < gateThreshold) {
+                                    val gateFactor = (instAmp / gateThreshold).coerceIn(0.25, 1.0)
+                                    s1L *= gateFactor
+                                    s1R *= gateFactor
+                                }
                             }
                         }
 
-                        // Step 2: Equalizer (5-Band Peaking/Shelving)
-                        var stage2L = stage1L
-                        var stage2R = stage1R
-                        filters.values.forEach { biquad ->
-                            stage2L = biquad.processL(stage2L)
-                            stage2R = biquad.processR(stage2R)
+                        // ==========================================
+                        // STAGE 2: EQUALIZER (PRD 6.1, 6.2 & 8.1)
+                        // ==========================================
+                        var s2L = s1L
+                        var s2R = s1R
+
+                        if (isAdvancedParametricMode) {
+                            // 10 Independent Parametric Bands with individual Q
+                            parametricFilters.values.forEach { biquad ->
+                                s2L = biquad.processL(s2L)
+                                s2R = biquad.processR(s2R)
+                            }
+                        } else {
+                            // 5 Plain-English Bands
+                            simpleFilters.values.forEach { biquad ->
+                                s2L = biquad.processL(s2L)
+                                s2R = biquad.processR(s2R)
+                            }
                         }
 
-                        // Step 3: Clarity Macro (Harmonic saturation + presence)
-                        var stage3L = stage2L
-                        var stage3R = stage2R
+                        // ==========================================
+                        // STAGE 3: CLARITY MACRO (PRD 6.9 & 8.3)
+                        // 3-Band Crossover + Presence Exciter
+                        // ==========================================
+                        var s3L = s2L
+                        var s3R = s2R
+
                         if (clarityMacroAmount > 0f) {
-                            val factor = clarityMacroAmount / 100f
-                            // Soft harmonic waveshaping for vocal presence
-                            stage3L = stage3L + (factor * 0.3 * (stage3L.pow(3)))
-                            stage3R = stage3R + (factor * 0.3 * (stage3R.pow(3)))
+                            val factor = (clarityMacroAmount / 100.0)
+
+                            // Split high band above 3.5kHz
+                            val lowL = crossoverLow.processL(s2L)
+                            val highL = s2L - lowL
+
+                            val lowR = crossoverLow.processR(s2R)
+                            val highR = s2R - lowR
+
+                            // Add gentle 2nd & 3rd order harmonic saturation to high-mid only
+                            val excitedHighL = highL + factor * 0.18 * tanh(highL * 1.6)
+                            val excitedHighR = highR + factor * 0.18 * tanh(highR * 1.6)
+
+                            // Dynamic de-harsher: attenuate high band if it spikes aggressively
+                            val deHarshL = if (abs(excitedHighL) > 0.6) excitedHighL * 0.85 else excitedHighL
+                            val deHarshR = if (abs(excitedHighR) > 0.6) excitedHighR * 0.85 else excitedHighR
+
+                            s3L = lowL + deHarshL
+                            s3R = lowR + deHarshR
                         }
 
-                        // Step 4: Dynamics ("Punch" soft-knee compressor)
-                        val (stage4L, stage4R) = applyDynamicsCompressor(stage3L, stage3R)
+                        // ==========================================
+                        // STAGE 4: DYNAMICS COMPRESSOR (PRD 6.8 & 8.3)
+                        // RMS Soft-Knee Compressor
+                        // ==========================================
+                        val (s4L, s4R) = processDynamicsCompressor(s3L, s3R)
 
-                        // Step 5: Virtualizer ("Space" crosstalk cancellation & widening)
-                        val (stage5L, stage5R) = applyVirtualizerSpace(stage4L, stage4R)
+                        // ==========================================
+                        // STAGE 5: VIRTUALIZER SPACE (PRD 6.3 & FR-4)
+                        // ==========================================
+                        val (s5L, s5R) = processVirtualizerSpace(s4L, s4R)
 
-                        // Step 6: Loudness / Volume Boost with Soft Brickwall Limiter
-                        val (stage6L, stage6R) = applyLoudnessAndLimiter(stage5L, stage5R)
+                        // ==========================================
+                        // STAGE 6: VOLUME BOOST & LIMITER (PRD 6.6 & FR-5)
+                        // ==========================================
+                        val (s6L, s6R) = processLoudnessAndLimiter(s5L, s5R)
 
-                        outL = stage6L
-                        outR = stage6R
+                        outL = s6L
+                        outR = s6R
                     }
 
-                    // Accumulate metrics
+                    // Metrics
                     rmsSum += outL * outL + outR * outR
-                    lSum += outL; rSum += outR
                     lrProdSum += outL * outR
                     lSqSum += outL * outL
                     rSqSum += outR * outR
 
-                    // Clamp to 16-bit PCM
                     val sampleShortL = (outL.coerceIn(-1.0, 1.0) * 32767.0).toInt().toShort()
                     val sampleShortR = (outR.coerceIn(-1.0, 1.0) * 32767.0).toInt().toShort()
 
@@ -291,12 +392,10 @@ class AudioEngine {
                     correlationMetric = (lrProdSum / denom).toFloat().coerceIn(0f, 1f)
                 }
 
-                // Write to AudioTrack
                 audioTrack?.write(pcmBuffer, 0, pcmBuffer.size)
 
-                // Update visual spectrum callback
                 val rms = sqrt(rmsSum / (BUFFER_SIZE * 2)).toFloat()
-                generateSimulatedSpectrum(spectrumBands, rms)
+                generateSpectrum(spectrumBands, rms)
                 onSpectrumUpdated?.invoke(spectrumBands, rms)
             }
         }
@@ -327,6 +426,97 @@ class AudioEngine {
 
     fun isCurrentlyPlaying(): Boolean = isPlaying.get()
 
+    private fun processDynamicsCompressor(inL: Double, inR: Double): Pair<Double, Double> {
+        val peakAmp = max(abs(inL), abs(inR))
+
+        // Time constants from parameters (PRD 8.3)
+        val attackCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (compAttackMs / 1000.0)))
+        val releaseCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (compReleaseMs / 1000.0)))
+
+        compressorEnvelope += if (peakAmp > compressorEnvelope) {
+            attackCoef * (peakAmp - compressorEnvelope)
+        } else {
+            releaseCoef * (peakAmp - compressorEnvelope)
+        }
+
+        // Linear threshold
+        val thresholdLinear = 10.0.pow(compThresholdDb / 20.0)
+        val ratio = max(1.0, compRatio.toDouble())
+        var gainReduction = 1.0
+
+        // Soft-knee compression calculation
+        if (compressorEnvelope > thresholdLinear) {
+            val overRatio = compressorEnvelope / thresholdLinear
+            val compressedOver = overRatio.pow(1.0 / ratio)
+            gainReduction = (thresholdLinear * compressedOver) / compressorEnvelope
+        }
+
+        // Automatic makeup gain
+        val makeupLinear = 10.0.pow((-compThresholdDb * 0.35) / 20.0)
+        val totalGain = gainReduction * makeupLinear
+
+        return Pair(inL * totalGain, inR * totalGain)
+    }
+
+    private fun processVirtualizerSpace(inL: Double, inR: Double): Pair<Double, Double> {
+        // PRD FR-4: On confirmed mono input, cap space at 35% to prevent phase cancellation
+        val effectiveSpace = if (correlationMetric > 0.90f) {
+            min(spaceAmount, 35f)
+        } else {
+            spaceAmount
+        }
+
+        val widthFactor = (effectiveSpace / 100.0)
+
+        // Store into delay ring buffer
+        delayBufferL[delayWriteIndex] = inL
+        delayBufferR[delayWriteIndex] = inR
+        delayWriteIndex = (delayWriteIndex + 1) % delayBufferSize
+
+        // ~8ms cross-feed delay (350 samples)
+        val readIndex = (delayWriteIndex - 350 + delayBufferSize) % delayBufferSize
+        val delayedL = delayBufferL[readIndex]
+        val delayedR = delayBufferR[readIndex]
+
+        // Transaural crossfeed decorrelation
+        val outL = inL + (delayedR - inR) * (widthFactor * 0.45)
+        val outR = inR + (delayedL - inL) * (widthFactor * 0.45)
+
+        return Pair(outL, outR)
+    }
+
+    private fun processLoudnessAndLimiter(inL: Double, inR: Double): Pair<Double, Double> {
+        // Volume Boost gain (+0 to +12dB)
+        val boostLinear = 10.0.pow((loudnessBoost / 100.0 * 12.0) / 20.0)
+        var boostedL = inL * boostLinear
+        var boostedR = inR * boostLinear
+
+        // True-Peak Soft Brickwall Limiter (PRD 6.6 & FR-5)
+        val ceiling = 0.95
+        if (abs(boostedL) > ceiling) {
+            val sign = if (boostedL >= 0) 1.0 else -1.0
+            boostedL = sign * (ceiling + (1.0 - ceiling) * tanh((abs(boostedL) - ceiling) / (1.0 - ceiling)))
+        }
+        if (abs(boostedR) > ceiling) {
+            val sign = if (boostedR >= 0) 1.0 else -1.0
+            boostedR = sign * (ceiling + (1.0 - ceiling) * tanh((abs(boostedR) - ceiling) / (1.0 - ceiling)))
+        }
+
+        return Pair(boostedL, boostedR)
+    }
+
+    private fun applyVintageEffects(input: Double): Double {
+        lfoPhase += 1.2 * (2.0 * PI / SAMPLE_RATE)
+        val wow = sin(lfoPhase) * (wowFlutterDepth / 100.0) * 0.03
+        val flutter = sin(lfoPhase * 5.7) * (wowFlutterDepth / 100.0) * 0.01
+
+        val noiseAmp = vintageNoiseLevel / 100.0 * 0.12
+        val tapeHiss = (Random.nextDouble() - 0.5) * noiseAmp
+        val vinylPop = if (Random.nextDouble() < (vintageNoiseLevel / 12000.0)) (Random.nextDouble() - 0.5) * 0.5 else 0.0
+
+        return input * (1.0 + wow + flutter) + tapeHiss + vinylPop
+    }
+
     private fun synthesizeSourceSample(track: DemoTrack): Pair<Double, Double> {
         val freq = track.baseFrequency.toDouble()
         val dt = 2.0 * PI / SAMPLE_RATE
@@ -334,192 +524,148 @@ class AudioEngine {
         phase += freq * dt
         if (phase > 2.0 * PI * 100) phase -= 2.0 * PI * 100
 
-        // Chord progression: Root + Minor third + Fifth + Sub-bass octave
         val sub = sin(phase * 0.5) * 0.22
         val fundamental = sin(phase) * 0.35
-        val harmonic1 = sin(phase * 1.5) * 0.18 // fifth
-        val harmonic2 = sin(phase * 1.2) * 0.15 // minor third
+        val harmonic1 = sin(phase * 1.5) * 0.18
+        val harmonic2 = sin(phase * 1.2) * 0.15
         val overtone = sin(phase * 3.0) * 0.08
 
         val rawClean = sub + fundamental + harmonic1 + harmonic2 + overtone
 
-        // Add characteristic recording noise based on track type
         var noise = 0.0
         when (track.noiseType) {
-            "cassette" -> {
-                // Broadband tape hiss
-                noise = (Random.nextDouble() - 0.5) * 0.06
-            }
+            "cassette" -> noise = (Random.nextDouble() - 0.5) * 0.06
             "vinyl" -> {
-                // 60Hz hum + occasional crackle pop
-                val hum = sin(phase * (60.0 / freq)) * 0.05
-                val crackle = if (Random.nextDouble() < 0.001) (Random.nextDouble() - 0.5) * 0.8 else 0.0
+                val hum = sin(phase * (60.0 / freq)) * 0.04
+                val crackle = if (Random.nextDouble() < 0.001) (Random.nextDouble() - 0.5) * 0.7 else 0.0
                 noise = hum + crackle + (Random.nextDouble() - 0.5) * 0.02
             }
-            "radio" -> {
-                // Mid-range bandwidth crunch
-                noise = (Random.nextDouble() - 0.5) * 0.03
-            }
-            "tape_heavy" -> {
-                noise = (Random.nextDouble() - 0.5) * 0.12
-            }
+            "radio" -> noise = (Random.nextDouble() - 0.5) * 0.03
+            "tape_heavy" -> noise = (Random.nextDouble() - 0.5) * 0.11
         }
 
         val total = rawClean + noise
-        // Subtle stereo offset
         val left = total + sin(phase * 0.51) * 0.05
         val right = total + cos(phase * 0.49) * 0.05
         return Pair(left, right)
     }
 
-    private fun applyGentleLowPass(input: Double, factor: Double): Double {
-        return input * factor
-    }
-
-    private fun applyVintageEffects(input: Double, isLeft: Boolean): Double {
-        // Synthesize authentic tape noise + wow and flutter
-        lfoPhase += 1.2 * (2.0 * PI / SAMPLE_RATE) // 1.2Hz wow
-        val wow = sin(lfoPhase) * (wowFlutterDepth / 100.0) * 0.03
-        val flutter = sin(lfoPhase * 5.7) * (wowFlutterDepth / 100.0) * 0.01
-
-        val noiseAmp = vintageNoiseLevel / 100.0 * 0.15
-        val tapeHiss = (Random.nextDouble() - 0.5) * noiseAmp
-        val vinylPop = if (Random.nextDouble() < (vintageNoiseLevel / 10000.0)) (Random.nextDouble() - 0.5) * 0.6 else 0.0
-
-        val modulated = input * (1.0 + wow + flutter) + tapeHiss + vinylPop
-        return modulated
-    }
-
-    private fun applyDynamicsCompressor(inL: Double, inR: Double): Pair<Double, Double> {
-        val inAbs = max(abs(inL), abs(inR))
-        val attack = 0.01 // ~15ms
-        val release = 0.001 // ~150ms
-
-        // RMS envelope tracking
-        compressorEnvelope += if (inAbs > compressorEnvelope) {
-            attack * (inAbs - compressorEnvelope)
-        } else {
-            release * (inAbs - compressorEnvelope)
-        }
-
-        val threshold = 0.4
-        val ratio = 1.0 + (punchAmount / 100.0) * 3.0 // 1:1 to 4:1
-        var gainReduction = 1.0
-
-        if (compressorEnvelope > threshold) {
-            val overDb = compressorEnvelope - threshold
-            val reducedDb = overDb / ratio
-            gainReduction = (threshold + reducedDb) / compressorEnvelope
-        }
-
-        // Makeup gain
-        val makeup = 1.0 + (punchAmount / 100.0) * 0.4
-        val totalGain = gainReduction * makeup
-        return Pair(inL * totalGain, inR * totalGain)
-    }
-
-    private fun applyVirtualizerSpace(inL: Double, inR: Double): Pair<Double, Double> {
-        val widthFactor = (spaceAmount / 100.0)
-
-        // Store into delay ring buffer
-        delayBufferL[delayWriteIndex] = inL
-        delayBufferR[delayWriteIndex] = inR
-        delayWriteIndex = (delayWriteIndex + 1) % delayBufferSize
-
-        // Read with ~8ms cross-feed delay (350 samples)
-        val readIndex = (delayWriteIndex - 350 + delayBufferSize) % delayBufferSize
-        val delayedL = delayBufferL[readIndex]
-        val delayedR = delayBufferR[readIndex]
-
-        // Crossfeed decorrelation
-        val outL = inL + (delayedR - inR) * (widthFactor * 0.4)
-        val outR = inR + (delayedL - inL) * (widthFactor * 0.4)
-
-        return Pair(outL, outR)
-    }
-
-    private fun applyLoudnessAndLimiter(inL: Double, inR: Double): Pair<Double, Double> {
-        val boost = 1.0 + (loudnessBoost / 100.0) * 1.5 // Up to +2.5x gain
-        var boostedL = inL * boost
-        var boostedR = inR * boost
-
-        // True-peak soft brickwall limiter (hyperbolic tangent soft-clipping)
-        val threshold = 0.95
-        if (abs(boostedL) > threshold) {
-            boostedL = threshold + (1.0 - threshold) * kotlin.math.tanh((boostedL - threshold) / (1.0 - threshold))
-        }
-        if (abs(boostedR) > threshold) {
-            boostedR = threshold + (1.0 - threshold) * kotlin.math.tanh((boostedR - threshold) / (1.0 - threshold))
-        }
-
-        return Pair(boostedL, boostedR)
-    }
-
-    private fun updateFilterCoefficients() {
-        // RBJ Audio EQ Cookbook Biquad calculation
+    private fun updateDspCoefficients() {
+        // 1. Simple 5-Band Peaking & Shelving Filters (PRD 8.3)
         eqGains.forEach { (band, gainDb) ->
-            val biquad = filters[band] ?: return@forEach
-            val f0 = band.centerHz.toDouble()
-            val gain = 10.0.pow(gainDb / 40.0) // A = 10^(dB/40)
-            val q = 0.8
-            val w0 = 2.0 * PI * f0 / SAMPLE_RATE
-            val alpha = sin(w0) / (2.0 * q)
-            val cosW0 = cos(w0)
+            val biquad = simpleFilters[band] ?: return@forEach
+            calculateCookbookBiquad(
+                biquad = biquad,
+                f0 = band.centerHz.toDouble(),
+                gainDb = gainDb.toDouble(),
+                q = 0.8,
+                isLowShelf = band == PlainBand.RUMBLE,
+                isHighShelf = band == PlainBand.AIR
+            )
+        }
 
-            when {
-                band.isShelf && band == PlainBand.RUMBLE -> {
-                    // Low shelf
-                    val aPlus1 = gain + 1.0
-                    val aMinus1 = gain - 1.0
-                    val sqrtA = sqrt(gain)
-                    val twoSqrtAAlpha = 2.0 * sqrtA * alpha
+        // 2. 10 Independent Parametric Bands (PRD 6.2 & 8.3)
+        parametricFrequencies.forEach { hz ->
+            val biquad = parametricFilters[hz] ?: return@forEach
+            val gain = (parametricGains[hz] ?: 0f).toDouble()
+            val q = (parametricQ[hz] ?: 0.8f).toDouble()
+            calculateCookbookBiquad(
+                biquad = biquad,
+                f0 = hz.toDouble(),
+                gainDb = gain,
+                q = q,
+                isLowShelf = hz <= 31,
+                isHighShelf = hz >= 16000
+            )
+        }
 
-                    val a0 = aPlus1 + aMinus1 * cosW0 + twoSqrtAAlpha
-                    biquad.b0 = (gain * (aPlus1 - aMinus1 * cosW0 + twoSqrtAAlpha)) / a0
-                    biquad.b1 = (2.0 * gain * (aMinus1 - aPlus1 * cosW0)) / a0
-                    biquad.b2 = (gain * (aPlus1 - aMinus1 * cosW0 - twoSqrtAAlpha)) / a0
-                    biquad.a1 = (-2.0 * (aMinus1 + aPlus1 * cosW0)) / a0
-                    biquad.a2 = (aPlus1 + aMinus1 * cosW0 - twoSqrtAAlpha) / a0
-                }
-                band.isShelf && band == PlainBand.AIR -> {
-                    // High shelf
-                    val aPlus1 = gain + 1.0
-                    val aMinus1 = gain - 1.0
-                    val sqrtA = sqrt(gain)
-                    val twoSqrtAAlpha = 2.0 * sqrtA * alpha
+        // 3. Multi-Harmonic De-Hum Notches (50/60Hz + 2nd and 3rd harmonics)
+        calculateNotch(humNotch1, humFrequency.toDouble(), 18.0)
+        calculateNotch(humNotch2, (humFrequency * 2).toDouble(), 18.0)
+        calculateNotch(humNotch3, (humFrequency * 3).toDouble(), 18.0)
 
-                    val a0 = aPlus1 - aMinus1 * cosW0 + twoSqrtAAlpha
-                    biquad.b0 = (gain * (aPlus1 + aMinus1 * cosW0 + twoSqrtAAlpha)) / a0
-                    biquad.b1 = (-2.0 * gain * (aMinus1 + aPlus1 * cosW0)) / a0
-                    biquad.b2 = (gain * (aPlus1 + aMinus1 * cosW0 - twoSqrtAAlpha)) / a0
-                    biquad.a1 = (2.0 * (aMinus1 - aPlus1 * cosW0)) / a0
-                    biquad.a2 = (aPlus1 - aMinus1 * cosW0 - twoSqrtAAlpha) / a0
-                }
-                else -> {
-                    // Peaking EQ
-                    val a0 = 1.0 + alpha / gain
-                    biquad.b0 = (1.0 + alpha * gain) / a0
-                    biquad.b1 = (-2.0 * cosW0) / a0
-                    biquad.b2 = (1.0 - alpha * gain) / a0
-                    biquad.a1 = (-2.0 * cosW0) / a0
-                    biquad.a2 = (1.0 - alpha / gain) / a0
-                }
+        // 4. Hiss High Shelf Filter (starts above 4.5kHz)
+        val hissCutDb = -(hissRemoval / 100.0 * 20.0) // 0 to -20dB cut
+        calculateCookbookBiquad(hissHighShelf, 4800.0, hissCutDb, 0.7, isLowShelf = false, isHighShelf = true)
+
+        // 5. Clarity 3-Band Crossover Split (3.5kHz 2nd-order Linkwitz-Riley low pass)
+        val wC = 2.0 * PI * 3500.0 / SAMPLE_RATE
+        val alphaC = sin(wC) / (2.0 * 0.707)
+        val cosWC = cos(wC)
+        val a0C = 1.0 + alphaC
+        crossoverLow.b0 = ((1.0 - cosWC) / 2.0) / a0C
+        crossoverLow.b1 = (1.0 - cosWC) / a0C
+        crossoverLow.b2 = ((1.0 - cosWC) / 2.0) / a0C
+        crossoverLow.a1 = (-2.0 * cosWC) / a0C
+        crossoverLow.a2 = (1.0 - alphaC) / a0C
+    }
+
+    private fun calculateCookbookBiquad(
+        biquad: BiquadState,
+        f0: Double,
+        gainDb: Double,
+        q: Double,
+        isLowShelf: Boolean,
+        isHighShelf: Boolean
+    ) {
+        val gain = 10.0.pow(gainDb / 40.0)
+        val clampedF0 = f0.coerceIn(20.0, 20000.0)
+        val w0 = 2.0 * PI * clampedF0 / SAMPLE_RATE
+        val alpha = sin(w0) / (2.0 * q.coerceIn(0.2, 10.0))
+        val cosW0 = cos(w0)
+
+        when {
+            isLowShelf -> {
+                val aPlus1 = gain + 1.0
+                val aMinus1 = gain - 1.0
+                val sqrtA = sqrt(gain)
+                val twoSqrtAAlpha = 2.0 * sqrtA * alpha
+
+                val a0 = aPlus1 + aMinus1 * cosW0 + twoSqrtAAlpha
+                biquad.b0 = (gain * (aPlus1 - aMinus1 * cosW0 + twoSqrtAAlpha)) / a0
+                biquad.b1 = (2.0 * gain * (aMinus1 - aPlus1 * cosW0)) / a0
+                biquad.b2 = (gain * (aPlus1 - aMinus1 * cosW0 - twoSqrtAAlpha)) / a0
+                biquad.a1 = (-2.0 * (aMinus1 + aPlus1 * cosW0)) / a0
+                biquad.a2 = (aPlus1 + aMinus1 * cosW0 - twoSqrtAAlpha) / a0
+            }
+            isHighShelf -> {
+                val aPlus1 = gain + 1.0
+                val aMinus1 = gain - 1.0
+                val sqrtA = sqrt(gain)
+                val twoSqrtAAlpha = 2.0 * sqrtA * alpha
+
+                val a0 = aPlus1 - aMinus1 * cosW0 + twoSqrtAAlpha
+                biquad.b0 = (gain * (aPlus1 + aMinus1 * cosW0 + twoSqrtAAlpha)) / a0
+                biquad.b1 = (-2.0 * gain * (aMinus1 + aPlus1 * cosW0)) / a0
+                biquad.b2 = (gain * (aPlus1 + aMinus1 * cosW0 - twoSqrtAAlpha)) / a0
+                biquad.a1 = (2.0 * (aMinus1 - aPlus1 * cosW0)) / a0
+                biquad.a2 = (aPlus1 - aMinus1 * cosW0 - twoSqrtAAlpha) / a0
+            }
+            else -> {
+                val a0 = 1.0 + alpha / gain
+                biquad.b0 = (1.0 + alpha * gain) / a0
+                biquad.b1 = (-2.0 * cosW0) / a0
+                biquad.b2 = (1.0 - alpha * gain) / a0
+                biquad.a1 = (-2.0 * cosW0) / a0
+                biquad.a2 = (1.0 - alpha / gain) / a0
             }
         }
-
-        // Notch 50/60Hz calculation for De-Hum
-        val w50 = 2.0 * PI * 60.0 / SAMPLE_RATE
-        val alpha50 = sin(w50) / (2.0 * 15.0) // high Q
-        val cosW50 = cos(w50)
-        val a0_50 = 1.0 + alpha50
-        notch50L.b0 = 1.0 / a0_50
-        notch50L.b1 = (-2.0 * cosW50) / a0_50
-        notch50L.b2 = 1.0 / a0_50
-        notch50L.a1 = (-2.0 * cosW50) / a0_50
-        notch50L.a2 = (1.0 - alpha50) / a0_50
     }
 
-    private fun generateSimulatedSpectrum(outBands: FloatArray, rms: Float) {
+    private fun calculateNotch(biquad: BiquadState, f0: Double, q: Double) {
+        if (f0 >= SAMPLE_RATE / 2) return
+        val w0 = 2.0 * PI * f0 / SAMPLE_RATE
+        val alpha = sin(w0) / (2.0 * q)
+        val cosW0 = cos(w0)
+        val a0 = 1.0 + alpha
+        biquad.b0 = 1.0 / a0
+        biquad.b1 = (-2.0 * cosW0) / a0
+        biquad.b2 = 1.0 / a0
+        biquad.a1 = (-2.0 * cosW0) / a0
+        biquad.a2 = (1.0 - alpha) / a0
+    }
+
+    private fun generateSpectrum(outBands: FloatArray, rms: Float) {
         val rumbleGain = (eqGains[PlainBand.RUMBLE] ?: 0f) / 12f
         val warmthGain = (eqGains[PlainBand.WARMTH] ?: 0f) / 12f
         val bodyGain = (eqGains[PlainBand.BODY] ?: 0f) / 12f

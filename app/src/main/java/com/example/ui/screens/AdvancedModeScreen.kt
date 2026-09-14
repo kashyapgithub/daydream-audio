@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,20 +15,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,11 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.model.PlainBand
 import com.example.ui.components.ABCompareBar
 import com.example.ui.components.LiquidSlider
 import com.example.ui.theme.GlassTokens
@@ -49,17 +43,21 @@ import com.example.ui.theme.raisedGlass
 import com.example.viewmodel.DaydreamUiState
 import com.example.viewmodel.DaydreamViewModel
 
+/**
+ * Advanced Mode Screen (PRD 6.2):
+ * - 10-Band Independent Parametric EQ with individual Q (0.3 to 10.0) and gain (-12 to +12dB)
+ * - True parametric dynamics controls: Threshold, Ratio, Attack, Release
+ * - HRTF Profile selection
+ * - Shareable Preset Export (FR-12)
+ */
 @Composable
 fun AdvancedModeScreen(
     viewModel: DaydreamViewModel,
     uiState: DaydreamUiState,
     paddingValues: PaddingValues
 ) {
+    val clipboardManager = LocalClipboardManager.current
     var selectedHrtf by remember { mutableStateOf(uiState.hrtfProfile) }
-    var compThreshold by remember { mutableFloatStateOf(uiState.compThresholdDb) }
-    var compRatio by remember { mutableFloatStateOf(uiState.compRatio) }
-    var compAttack by remember { mutableFloatStateOf(uiState.compAttackMs) }
-    var compRelease by remember { mutableFloatStateOf(uiState.compReleaseMs) }
 
     LazyColumn(
         modifier = Modifier
@@ -88,14 +86,14 @@ fun AdvancedModeScreen(
                     )
                 }
                 Text(
-                    text = "10-Band Parametric EQ & Dynamics Compressor with plain-language anchors",
+                    text = "10-Band Parametric EQ & Dynamics Compressor with independent Q and gain",
                     fontSize = 13.sp,
                     color = GlassTokens.TextSecondary
                 )
             }
         }
 
-        // Prominent A/B Bar
+        // Prominent A/B Bar (<50ms instantaneous switch, PRD FR-3)
         item {
             ABCompareBar(
                 isBypassed = uiState.isBypassed,
@@ -104,7 +102,7 @@ fun AdvancedModeScreen(
             )
         }
 
-        // 10-Band Parametric EQ Grid (PRD 6.2)
+        // 10-Band Independent Parametric EQ Grid (PRD 6.2 & 8.3)
         item {
             Box(
                 modifier = Modifier
@@ -120,44 +118,46 @@ fun AdvancedModeScreen(
                         color = GlassTokens.TextPrimary
                     )
                     Text(
-                        text = "Real Hz frequencies mapped to plain-English acoustic character",
+                        text = "Independent center frequencies with user-adjustable Q factor (0.3 to 10.0)",
                         fontSize = 12.sp,
                         color = GlassTokens.TextSecondary
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    val hzLabels = listOf(
-                        Triple(31, "Sub-Rumble", PlainBand.RUMBLE),
-                        Triple(63, "Deep Bass", PlainBand.RUMBLE),
-                        Triple(125, "Warmth Punch", PlainBand.WARMTH),
-                        Triple(250, "Low-Mid Fullness", PlainBand.WARMTH),
-                        Triple(500, "Body / Boxiness", PlainBand.BODY),
-                        Triple(1000, "Vocal Presence", PlainBand.BODY),
-                        Triple(2000, "Instrument Edge", PlainBand.CLARITY),
-                        Triple(4000, "Vocal Articulation", PlainBand.CLARITY),
-                        Triple(8000, "Treble Detail", PlainBand.AIR),
-                        Triple(16000, "Air / Sparkle", PlainBand.AIR)
-                    )
+                    uiState.advancedBands.forEach { band ->
+                        val formattedTitle = if (band.hz < 1000) "${band.hz}Hz • ${band.anchorLabel}" else "${band.hz / 1000}kHz • ${band.anchorLabel}"
 
-                    hzLabels.forEach { (hz, anchor, plainBand) ->
-                        val currentGain = uiState.eqGains[plainBand] ?: 0f
-                        LiquidSlider(
-                            title = if (hz < 1000) "${hz}Hz • $anchor" else "${hz / 1000}kHz • $anchor",
-                            value = currentGain,
-                            onValueChange = { viewModel.setEqGain(plainBand, it) },
-                            valueRange = -12f..12f,
-                            unit = "dB",
-                            technicalValue = "Q=0.8 Peaking",
-                            showTechnical = true,
-                            reduceGlass = uiState.reduceGlass
-                        )
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            LiquidSlider(
+                                title = formattedTitle,
+                                value = band.gainDb,
+                                onValueChange = { viewModel.setParametricGain(band.hz, it) },
+                                valueRange = -12f..12f,
+                                unit = "dB",
+                                technicalValue = "Q=${String.format("%.1f", band.q)}",
+                                showTechnical = true,
+                                reduceGlass = uiState.reduceGlass
+                            )
+
+                            // Optional Q-factor slider
+                            LiquidSlider(
+                                title = "  ↳ Resonance (Q)",
+                                value = band.q,
+                                onValueChange = { viewModel.setParametricQ(band.hz, it) },
+                                valueRange = 0.3f..10.0f,
+                                unit = "Q",
+                                showTechnical = false,
+                                accentColor = GlassTokens.AccentStart.copy(alpha = 0.8f),
+                                reduceGlass = uiState.reduceGlass
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // Dynamics Compressor Controls (PRD 6.2)
+        // Dynamics Compressor Controls (PRD 6.2 & 8.3)
         item {
             Box(
                 modifier = Modifier
@@ -167,7 +167,7 @@ fun AdvancedModeScreen(
             ) {
                 Column {
                     Text(
-                        text = "Dynamics Processing (Compressor)",
+                        text = "Dynamics Processing (RMS Compressor)",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = GlassTokens.TextPrimary
@@ -182,8 +182,8 @@ fun AdvancedModeScreen(
 
                     LiquidSlider(
                         title = "Threshold (When it engages)",
-                        value = compThreshold,
-                        onValueChange = { compThreshold = it },
+                        value = uiState.compThresholdDb,
+                        onValueChange = { viewModel.setCompThresholdDb(it) },
                         valueRange = -40f..0f,
                         unit = "dB",
                         showTechnical = true,
@@ -192,11 +192,8 @@ fun AdvancedModeScreen(
 
                     LiquidSlider(
                         title = "Compression Ratio (Intensity)",
-                        value = compRatio,
-                        onValueChange = {
-                            compRatio = it
-                            viewModel.setPunchPercent(it * 10f)
-                        },
+                        value = uiState.compRatio,
+                        onValueChange = { viewModel.setCompRatio(it) },
                         valueRange = 1f..10f,
                         unit = ":1",
                         showTechnical = true,
@@ -205,8 +202,8 @@ fun AdvancedModeScreen(
 
                     LiquidSlider(
                         title = "Attack Time (Speed of clamp)",
-                        value = compAttack,
-                        onValueChange = { compAttack = it },
+                        value = uiState.compAttackMs,
+                        onValueChange = { viewModel.setCompAttackMs(it) },
                         valueRange = 1f..100f,
                         unit = "ms",
                         showTechnical = true,
@@ -215,8 +212,8 @@ fun AdvancedModeScreen(
 
                     LiquidSlider(
                         title = "Release Time (Recovery)",
-                        value = compRelease,
-                        onValueChange = { compRelease = it },
+                        value = uiState.compReleaseMs,
+                        onValueChange = { viewModel.setCompReleaseMs(it) },
                         valueRange = 10f..500f,
                         unit = "ms",
                         showTechnical = true,
@@ -280,7 +277,7 @@ fun AdvancedModeScreen(
             }
         }
 
-        // Preset Export / Share (PRD 6.2)
+        // Preset Export / Share (PRD 6.2 & FR-12)
         item {
             Box(
                 modifier = Modifier
@@ -308,7 +305,10 @@ fun AdvancedModeScreen(
                     }
 
                     Button(
-                        onClick = { /* Export simulation */ },
+                        onClick = {
+                            val json = viewModel.exportCurrentPresetJson()
+                            clipboardManager.setText(AnnotatedString(json))
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
                         shape = GlassTokens.radiusPill
                     ) {
@@ -318,7 +318,7 @@ fun AdvancedModeScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Export", fontSize = 12.sp)
+                        Text("Copy JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

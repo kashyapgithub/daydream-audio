@@ -108,29 +108,124 @@ fun SimpleModeScreen(
             }
         }
 
-        // Output Device Chip
+        // System Audio Hook Status & Output Device Chips
         item {
             Row(
-                modifier = Modifier
-                    .clip(GlassTokens.radiusPill)
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusPill)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Headphones,
-                    contentDescription = null,
-                    tint = GlassTokens.AccentStart,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Profile: ${uiState.currentDevice.displayName}",
-                    fontSize = 12.sp,
-                    color = GlassTokens.TextPrimary,
-                    fontWeight = FontWeight.Medium
-                )
+                // Device Profile Chip
+                Row(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusPill)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Headphones,
+                        contentDescription = null,
+                        tint = GlassTokens.AccentStart,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = uiState.currentDevice.displayName,
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextPrimary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // System Audio Session Hook Status (PRD 8.0 & 12.1)
+                Row(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(
+                            if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe.copy(alpha = 0.15f)
+                            else Color.White.copy(alpha = 0.08f)
+                        )
+                        .border(
+                            1.dp,
+                            if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe.copy(alpha = 0.5f)
+                            else Color.White.copy(alpha = 0.15f),
+                            GlassTokens.radiusPill
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(GlassTokens.radiusPill)
+                            .background(if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe else Color.White.copy(alpha = 0.4f))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (uiState.activeSystemSessions.isNotEmpty()) {
+                            "Hooked: ${uiState.activeSystemSessions.first()}"
+                        } else {
+                            "System Audio: Listening"
+                        },
+                        fontSize = 12.sp,
+                        color = if (uiState.activeSystemSessions.isNotEmpty()) GlassTokens.AccentSafe else GlassTokens.TextSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        // Output Device Change Prompt Banner (PRD FR-10)
+        if (uiState.devicePrompt != null) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(GlassTokens.radiusMd)
+                        .background(GlassTokens.AccentStart.copy(alpha = 0.18f))
+                        .border(1.dp, GlassTokens.AccentStart, GlassTokens.radiusMd)
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "🎧 Switch to ${uiState.devicePrompt.displayName}?",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.AccentStart
+                            )
+                            Text(
+                                text = "Audio output change detected. Tap to tune baseline Space & Punch.",
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                        Row {
+                            Button(
+                                onClick = { viewModel.setOutputDevice(uiState.devicePrompt) },
+                                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                                shape = GlassTokens.radiusPill,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Text("Tune", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Button(
+                                onClick = { viewModel.dismissDevicePrompt() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("Dismiss", fontSize = 12.sp, color = GlassTokens.TextMuted)
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -438,17 +533,17 @@ fun SimpleModeScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Space (Virtualizer)
+                    // Space (Virtualizer) — PRD FR-4: Auto-detect mono and cap at 35%
                     LiquidSlider(
                         title = "Space (Width)",
                         value = uiState.spacePercent,
                         onValueChange = { viewModel.setSpacePercent(it) },
-                        valueRange = 0f..100f,
+                        valueRange = if (uiState.isMonoDetected) 0f..35f else 0f..100f,
                         unit = "%",
                         technicalValue = "HRTF Crossfeed",
                         showTechnical = uiState.showTechnicalValues,
-                        isWarning = uiState.showMonoWarning,
-                        warningText = if (uiState.showMonoWarning) "Mono source detected — keep low" else null,
+                        isWarning = uiState.isMonoDetected,
+                        warningText = if (uiState.isMonoDetected) "Mono input detected — Space capped at 35% to prevent phase cancellation" else null,
                         reduceGlass = uiState.reduceGlass
                     )
 

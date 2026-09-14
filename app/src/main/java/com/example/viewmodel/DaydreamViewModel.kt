@@ -1,18 +1,25 @@
 package com.example.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.audio.AudioDeviceManager
 import com.example.audio.AudioEngine
+import com.example.audio.SystemAudioEffectManager
 import com.example.model.AudioComplaint
 import com.example.model.DemoTrack
 import com.example.model.OutputDevice
 import com.example.model.ParametricBand
 import com.example.model.PlainBand
+import com.example.model.PresetExportBundle
 import com.example.model.TimeMachinePreset
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 import kotlin.random.Random
 
 enum class AppNavTab(val title: String, val iconTag: String) {
@@ -36,6 +43,9 @@ data class DaydreamUiState(
     val isBypassed: Boolean = false, // A/B compare toggle
     val currentTrack: DemoTrack? = null,
     val currentDevice: OutputDevice = OutputDevice.BLUETOOTH_EARBUDS,
+    val devicePrompt: OutputDevice? = null,
+    val isOnboardingCompleted: Boolean = true,
+    val activeSystemSessions: List<String> = emptyList(),
 
     // Spectrum & Audio Reactive (PRD 22.7 Sonic Glass)
     val spectrum: FloatArray = FloatArray(8) { 0.1f },
@@ -57,20 +67,22 @@ data class DaydreamUiState(
     val loudnessPercent: Float = 0f,
     val hissRemovalPercent: Float = 0f,
     val deHumEnabled: Boolean = false,
+    val humFrequency: Int = 60,
     val deCrackleEnabled: Boolean = false,
 
-    // Advanced Mode
+    // Advanced 10-Band Independent Parametric EQ (PRD 6.2 & 8.3)
+    val isAdvancedModeActive: Boolean = false,
     val advancedBands: List<ParametricBand> = listOf(
-        ParametricBand(31, 0f, 1.0f),
-        ParametricBand(63, 0f, 1.0f),
-        ParametricBand(125, 0f, 1.0f),
-        ParametricBand(250, 0f, 1.0f),
-        ParametricBand(500, 0f, 1.0f),
-        ParametricBand(1000, 0f, 1.0f),
-        ParametricBand(2000, 0f, 1.0f),
-        ParametricBand(4000, 0f, 1.0f),
-        ParametricBand(8000, 0f, 1.0f),
-        ParametricBand(16000, 0f, 1.0f)
+        ParametricBand(31, "Sub-Rumble", 0f, 0.8f),
+        ParametricBand(63, "Deep Bass", 0f, 0.8f),
+        ParametricBand(125, "Warmth Punch", 0f, 0.8f),
+        ParametricBand(250, "Low-Mid Fullness", 0f, 0.8f),
+        ParametricBand(500, "Vocal Body", 0f, 0.8f),
+        ParametricBand(1000, "Vocal Presence", 0f, 0.8f),
+        ParametricBand(2000, "Instrument Edge", 0f, 0.8f),
+        ParametricBand(4000, "Vocal Articulation", 0f, 0.8f),
+        ParametricBand(8000, "Treble Detail", 0f, 0.8f),
+        ParametricBand(16000, "Air & Sparkle", 0f, 0.8f)
     ),
     val compThresholdDb: Float = -18f,
     val compRatio: Float = 2.5f,
@@ -107,13 +119,17 @@ data class DaydreamUiState(
     val notificationMessage: String? = null
 )
 
-class DaydreamViewModel : ViewModel() {
+class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val prefs = application.getSharedPreferences("daydream_audio_prefs", Context.MODE_PRIVATE)
     private val audioEngine = AudioEngine()
+    private val systemEffects = SystemAudioEffectManager.instance
+    private val deviceManager = AudioDeviceManager(application)
 
     private val _uiState = MutableStateFlow(
         DaydreamUiState(
-            currentTrack = audioEngine.demoTracks.first()
+            currentTrack = audioEngine.demoTracks.first(),
+            isOnboardingCompleted = prefs.getBoolean("onboarding_completed", false)
         )
     )
     val uiState: StateFlow<DaydreamUiState> = _uiState.asStateFlow()
@@ -171,7 +187,7 @@ class DaydreamViewModel : ViewModel() {
     )
 
     init {
-        // Connect audio engine callbacks
+        // Connect internal audio engine callbacks
         audioEngine.onSpectrumUpdated = { bands, rms ->
             _uiState.update { state ->
                 val isMono = audioEngine.correlationMetric > 0.90f
@@ -179,15 +195,46 @@ class DaydreamViewModel : ViewModel() {
                     spectrum = bands.clone(),
                     audioRms = rms,
                     isMonoDetected = isMono,
-                    showMonoWarning = isMono && state.spacePercent > 40f
+                    showMonoWarning = isMono && state.spacePercent > 35f
                 )
             }
         }
-        syncEngineParameters()
+
+        // Listen for hardware output device changes (PRD FR-10)
+        viewModelScope.launch {
+            deviceManager.currentDevice.collect { device ->
+                _uiState.update { it.copy(currentDevice = device) }
+            }
+        }
+        viewModelScope.launch {
+            deviceManager.deviceChangePrompt.collect { promptDevice ->
+                _uiState.update { it.copy(devicePrompt = promptDevice) }
+            }
+        }
+
+        // Listen for system audio sessions (Spotify, YT Music, etc.)
+        viewModelScope.launch {
+            systemEffects.activeSessionsSummary.collect { sessions ->
+                _uiState.update { it.copy(activeSystemSessions = sessions) }
+            }
+        }
+
+        syncAllEngineParameters()
+    }
+
+    fun completeOnboarding() {
+        prefs.edit().putBoolean("onboarding_completed", true).apply()
+        _uiState.update { it.copy(isOnboardingCompleted = true) }
+    }
+
+    fun restartOnboarding() {
+        _uiState.update { it.copy(isOnboardingCompleted = false) }
     }
 
     fun setTab(tab: AppNavTab) {
-        _uiState.update { it.copy(currentTab = tab) }
+        val isAdv = tab == AppNavTab.ADVANCED
+        audioEngine.isAdvancedParametricMode = isAdv
+        _uiState.update { it.copy(currentTab = tab, isAdvancedModeActive = isAdv) }
     }
 
     fun togglePlayPause() {
@@ -205,6 +252,7 @@ class DaydreamViewModel : ViewModel() {
     fun toggleBypassAB() {
         val newBypass = !audioEngine.isBypassed.get()
         audioEngine.isBypassed.set(newBypass)
+        systemEffects.setBypassed(newBypass)
         _uiState.update {
             it.copy(
                 isBypassed = newBypass,
@@ -217,18 +265,46 @@ class DaydreamViewModel : ViewModel() {
         val clamped = gainDb.coerceIn(-12f, 12f)
         val updated = _uiState.value.eqGains.toMutableMap()
         updated[band] = clamped
+
         audioEngine.eqGains[band] = clamped
+        systemEffects.updatePlainEqGains(updated)
+
         _uiState.update { it.copy(eqGains = updated, activePresetId = null) }
     }
 
+    fun setParametricGain(hz: Int, gainDb: Float) {
+        val clamped = gainDb.coerceIn(-12f, 12f)
+        val updatedBands = _uiState.value.advancedBands.map {
+            if (it.hz == hz) it.copy(gainDb = clamped) else it
+        }
+
+        audioEngine.parametricGains[hz] = clamped
+        systemEffects.updateParametricGains(mapOf(hz to clamped))
+
+        _uiState.update { it.copy(advancedBands = updatedBands, activePresetId = null) }
+    }
+
+    fun setParametricQ(hz: Int, q: Float) {
+        val clampedQ = q.coerceIn(0.2f, 10.0f)
+        val updatedBands = _uiState.value.advancedBands.map {
+            if (it.hz == hz) it.copy(q = clampedQ) else it
+        }
+        audioEngine.parametricQ[hz] = clampedQ
+        _uiState.update { it.copy(advancedBands = updatedBands) }
+    }
+
     fun setSpacePercent(value: Float) {
-        val clamped = value.coerceIn(0f, 100f)
-        audioEngine.spaceAmount = clamped
         val isMono = _uiState.value.isMonoDetected
+        // PRD FR-4: Enforce space cap on mono source
+        val effectiveValue = if (isMono) value.coerceIn(0f, 35f) else value.coerceIn(0f, 100f)
+
+        audioEngine.spaceAmount = effectiveValue
+        systemEffects.updateSpace(effectiveValue, isMono)
+
         _uiState.update {
             it.copy(
-                spacePercent = clamped,
-                showMonoWarning = isMono && clamped > 40f,
+                spacePercent = effectiveValue,
+                showMonoWarning = isMono && value > 35f,
                 activePresetId = null
             )
         }
@@ -237,7 +313,32 @@ class DaydreamViewModel : ViewModel() {
     fun setPunchPercent(value: Float) {
         val clamped = value.coerceIn(0f, 100f)
         audioEngine.punchAmount = clamped
+        systemEffects.updatePunch(clamped)
         _uiState.update { it.copy(punchPercent = clamped, activePresetId = null) }
+    }
+
+    fun setCompThresholdDb(thresholdDb: Float) {
+        val clamped = thresholdDb.coerceIn(-40f, 0f)
+        audioEngine.compThresholdDb = clamped
+        _uiState.update { it.copy(compThresholdDb = clamped) }
+    }
+
+    fun setCompRatio(ratio: Float) {
+        val clamped = ratio.coerceIn(1f, 10f)
+        audioEngine.compRatio = clamped
+        _uiState.update { it.copy(compRatio = clamped) }
+    }
+
+    fun setCompAttackMs(attackMs: Float) {
+        val clamped = attackMs.coerceIn(1f, 100f)
+        audioEngine.compAttackMs = clamped
+        _uiState.update { it.copy(compAttackMs = clamped) }
+    }
+
+    fun setCompReleaseMs(releaseMs: Float) {
+        val clamped = releaseMs.coerceIn(10f, 500f)
+        audioEngine.compReleaseMs = clamped
+        _uiState.update { it.copy(compReleaseMs = clamped) }
     }
 
     fun setClarityMacroPercent(value: Float) {
@@ -249,6 +350,7 @@ class DaydreamViewModel : ViewModel() {
     fun setLoudnessPercent(value: Float) {
         val clamped = value.coerceIn(0f, 100f)
         audioEngine.loudnessBoost = clamped
+        systemEffects.updateLoudness(clamped)
         _uiState.update { it.copy(loudnessPercent = clamped) }
     }
 
@@ -262,6 +364,11 @@ class DaydreamViewModel : ViewModel() {
         val current = !_uiState.value.deHumEnabled
         audioEngine.deHumEnabled = current
         _uiState.update { it.copy(deHumEnabled = current, activePresetId = null) }
+    }
+
+    fun setHumFrequency(freq: Int) {
+        audioEngine.humFrequency = freq
+        _uiState.update { it.copy(humFrequency = freq) }
     }
 
     fun toggleDeCrackle() {
@@ -340,10 +447,15 @@ class DaydreamViewModel : ViewModel() {
             }
         }
 
-        // Apply to audio engine
-        updatedEq.forEach { (band, gain) -> audioEngine.eqGains[band] = gain }
+        audioEngine.eqGains.putAll(updatedEq)
+        systemEffects.updatePlainEqGains(updatedEq)
+
         audioEngine.spaceAmount = space
+        systemEffects.updateSpace(space, _uiState.value.isMonoDetected)
+
         audioEngine.punchAmount = punch
+        systemEffects.updatePunch(punch)
+
         audioEngine.clarityMacroAmount = clarityMacro
         audioEngine.hissRemoval = hiss
         audioEngine.deHumEnabled = deHum
@@ -376,13 +488,18 @@ class DaydreamViewModel : ViewModel() {
             PlainBand.CLARITY to preset.clarityDb,
             PlainBand.AIR to preset.airDb
         )
-        updatedEq.forEach { (band, gain) -> audioEngine.eqGains[band] = gain }
+        audioEngine.eqGains.putAll(updatedEq)
+        systemEffects.updatePlainEqGains(updatedEq)
+
         audioEngine.spaceAmount = preset.spacePercent
+        systemEffects.updateSpace(preset.spacePercent, _uiState.value.isMonoDetected)
+
         audioEngine.punchAmount = preset.punchRatio
+        systemEffects.updatePunch(preset.punchRatio)
+
         audioEngine.hissRemoval = preset.hissRemoval
         audioEngine.deHumEnabled = preset.deHumEnabled
         audioEngine.deCrackleEnabled = preset.deCrackleEnabled
-
         audioEngine.vintageMode = false
         audioEngine.wowFlutterDepth = 0f
 
@@ -433,16 +550,103 @@ class DaydreamViewModel : ViewModel() {
         audioEngine.punchAmount = device.defaultPunch
         val updatedEq = _uiState.value.eqGains.toMutableMap()
         updatedEq[PlainBand.WARMTH] = device.defaultWarmth
+
         audioEngine.eqGains[PlainBand.WARMTH] = device.defaultWarmth
+        systemEffects.updatePlainEqGains(updatedEq)
+        systemEffects.updateSpace(device.defaultSpace, _uiState.value.isMonoDetected)
+        systemEffects.updatePunch(device.defaultPunch)
 
         _uiState.update {
             it.copy(
                 currentDevice = device,
+                devicePrompt = null,
                 spacePercent = device.defaultSpace,
                 punchPercent = device.defaultPunch,
                 eqGains = updatedEq,
                 notificationMessage = "Profile auto-tuned for ${device.displayName}"
             )
+        }
+    }
+
+    fun dismissDevicePrompt() {
+        deviceManager.clearDevicePrompt()
+        _uiState.update { it.copy(devicePrompt = null) }
+    }
+
+    // Preset JSON Serialization & Export / Import (PRD 6.2 & FR-12)
+    fun exportCurrentPresetJson(): String {
+        val s = _uiState.value
+        val json = JSONObject().apply {
+            put("version", 1)
+            put("name", "Custom Preset")
+            val eqObj = JSONObject()
+            s.eqGains.forEach { (band, gain) -> eqObj.put(band.name, gain) }
+            put("eqGains", eqObj)
+            put("spacePercent", s.spacePercent)
+            put("punchPercent", s.punchPercent)
+            put("clarityMacroPercent", s.clarityMacroPercent)
+            put("loudnessPercent", s.loudnessPercent)
+            put("hissRemovalPercent", s.hissRemovalPercent)
+            put("deHumEnabled", s.deHumEnabled)
+            put("deCrackleEnabled", s.deCrackleEnabled)
+            put("compThresholdDb", s.compThresholdDb)
+            put("compRatio", s.compRatio)
+            put("compAttackMs", s.compAttackMs)
+            put("compReleaseMs", s.compReleaseMs)
+        }
+        return json.toString(2)
+    }
+
+    fun importPresetJson(jsonString: String): Boolean {
+        return try {
+            val json = JSONObject(jsonString)
+            val eqObj = json.optJSONObject("eqGains")
+            val importedEq = _uiState.value.eqGains.toMutableMap()
+            if (eqObj != null) {
+                PlainBand.entries.forEach { band ->
+                    if (eqObj.has(band.name)) {
+                        importedEq[band] = eqObj.getDouble(band.name).toFloat()
+                    }
+                }
+            }
+            val space = json.optDouble("spacePercent", 35.0).toFloat()
+            val punch = json.optDouble("punchPercent", 25.0).toFloat()
+            val clarity = json.optDouble("clarityMacroPercent", 0.0).toFloat()
+            val loudness = json.optDouble("loudnessPercent", 0.0).toFloat()
+            val hiss = json.optDouble("hissRemovalPercent", 0.0).toFloat()
+            val deHum = json.optBoolean("deHumEnabled", false)
+            val deCrackle = json.optBoolean("deCrackleEnabled", false)
+
+            audioEngine.eqGains.putAll(importedEq)
+            systemEffects.updatePlainEqGains(importedEq)
+            audioEngine.spaceAmount = space
+            systemEffects.updateSpace(space, _uiState.value.isMonoDetected)
+            audioEngine.punchAmount = punch
+            systemEffects.updatePunch(punch)
+            audioEngine.clarityMacroAmount = clarity
+            audioEngine.loudnessBoost = loudness
+            systemEffects.updateLoudness(loudness)
+            audioEngine.hissRemoval = hiss
+            audioEngine.deHumEnabled = deHum
+            audioEngine.deCrackleEnabled = deCrackle
+
+            _uiState.update {
+                it.copy(
+                    eqGains = importedEq,
+                    spacePercent = space,
+                    punchPercent = punch,
+                    clarityMacroPercent = clarity,
+                    loudnessPercent = loudness,
+                    hissRemovalPercent = hiss,
+                    deHumEnabled = deHum,
+                    deCrackleEnabled = deCrackle,
+                    notificationMessage = "Preset imported successfully!"
+                )
+            }
+            true
+        } catch (e: Exception) {
+            _uiState.update { it.copy(notificationMessage = "Failed to import preset: Invalid JSON") }
+            false
         }
     }
 
@@ -453,7 +657,6 @@ class DaydreamViewModel : ViewModel() {
         val isBoost = Random.nextBoolean()
         val delta = if (isBoost) 6f else -6f
 
-        // Apply the challenge to audio
         audioEngine.eqGains.forEach { (b, _) -> audioEngine.eqGains[b] = 0f }
         audioEngine.eqGains[chosen] = delta
 
@@ -496,12 +699,10 @@ class DaydreamViewModel : ViewModel() {
                 notificationMessage = if (isCorrect) "Spot on! That was ${current.targetBand.title} (${if (current.isBoost) "+6dB boost" else "-6dB cut"})" else "Not quite! That was ${current.targetBand.title}."
             )
         }
-
-        // Reset EQ back to user's saved state
-        syncEngineParameters()
+        syncAllEngineParameters()
     }
 
-    // Settings
+    // Settings & Display
     fun toggleShowTechnicalValues() {
         _uiState.update { it.copy(showTechnicalValues = !it.showTechnicalValues) }
     }
@@ -521,10 +722,15 @@ class DaydreamViewModel : ViewModel() {
     fun resetAllToFlat() {
         val flat = PlainBand.entries.associateWith { 0f }
         flat.forEach { (b, g) -> audioEngine.eqGains[b] = g }
+        systemEffects.updatePlainEqGains(flat)
+
         audioEngine.spaceAmount = 30f
+        systemEffects.updateSpace(30f, false)
         audioEngine.punchAmount = 0f
+        systemEffects.updatePunch(0f)
         audioEngine.clarityMacroAmount = 0f
         audioEngine.loudnessBoost = 0f
+        systemEffects.updateLoudness(0f)
         audioEngine.hissRemoval = 0f
         audioEngine.deHumEnabled = false
         audioEngine.deCrackleEnabled = false
@@ -551,23 +757,39 @@ class DaydreamViewModel : ViewModel() {
         _uiState.update { it.copy(notificationMessage = null) }
     }
 
-    private fun syncEngineParameters() {
+    private fun syncAllEngineParameters() {
         val s = _uiState.value
         s.eqGains.forEach { (band, gain) -> audioEngine.eqGains[band] = gain }
+        systemEffects.updatePlainEqGains(s.eqGains)
+
         audioEngine.spaceAmount = s.spacePercent
+        systemEffects.updateSpace(s.spacePercent, s.isMonoDetected)
+
         audioEngine.punchAmount = s.punchPercent
+        systemEffects.updatePunch(s.punchPercent)
+
         audioEngine.clarityMacroAmount = s.clarityMacroPercent
         audioEngine.loudnessBoost = s.loudnessPercent
+        systemEffects.updateLoudness(s.loudnessPercent)
+
         audioEngine.hissRemoval = s.hissRemovalPercent
         audioEngine.deHumEnabled = s.deHumEnabled
+        audioEngine.humFrequency = s.humFrequency
         audioEngine.deCrackleEnabled = s.deCrackleEnabled
         audioEngine.vintageMode = s.isVintageMode
         audioEngine.wowFlutterDepth = s.wowFlutterDepth
         audioEngine.vintageNoiseLevel = s.vintageNoiseLevel
+
+        audioEngine.compThresholdDb = s.compThresholdDb
+        audioEngine.compRatio = s.compRatio
+        audioEngine.compAttackMs = s.compAttackMs
+        audioEngine.compReleaseMs = s.compReleaseMs
     }
 
     override fun onCleared() {
         super.onCleared()
         audioEngine.stopPlayback()
+        systemEffects.releaseAll()
+        deviceManager.unregisterCallback()
     }
 }

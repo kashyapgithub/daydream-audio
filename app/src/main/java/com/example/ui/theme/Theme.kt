@@ -52,20 +52,23 @@ object GlassTokens {
     val TextSecondary = Color(0xFFFFFFFF).copy(alpha = 0.65f)
     val TextMuted = Color(0xFFFFFFFF).copy(alpha = 0.40f)
 
-    // Liquid Glass Tier Colors (Dark Canvas Background)
-    val BaseGlassFill = Color(0xFF13111C).copy(alpha = 0.70f)
-    val BaseGlassBorder = Color(0xFFFFFFFF).copy(alpha = 0.12f)
+    // PRD Section 22.10 Exact Liquid Glass Tier Tokens
+    val BaseGlassFill = Color.White.copy(alpha = 0.10f)
+    val BaseGlassBorder = Color.White.copy(alpha = 0.15f)
+    val BaseGlassBlur: Dp = 40.dp
 
-    val RaisedGlassFill = Color(0xFF1F1C2B).copy(alpha = 0.68f)
-    val RaisedGlassBorder = Color(0xFFFFFFFF).copy(alpha = 0.18f)
+    val RaisedGlassFill = Color.White.copy(alpha = 0.18f)
+    val RaisedGlassBorder = Color.White.copy(alpha = 0.20f)
+    val RaisedGlassBlur: Dp = 24.dp
 
-    val FloatingGlassFill = Color(0xFF2B273C).copy(alpha = 0.78f)
-    val FloatingGlassBorder = Color(0xFFFFFFFF).copy(alpha = 0.28f)
-    val FloatingGlassSpecular = Color(0xFFFFFFFF).copy(alpha = 0.45f)
+    val FloatingGlassFill = Color.White.copy(alpha = 0.26f)
+    val FloatingGlassBorder = Color.White.copy(alpha = 0.30f)
+    val FloatingGlassSpecular = Color.White.copy(alpha = 0.40f)
+    val FloatingGlassBlur: Dp = 16.dp
 
     // Solid High-Contrast Fallback (PRD 22.3 "Reduce Glass")
-    val SolidCardFill = Color(0xFF181524)
-    val SolidCardBorder = Color(0xFF36324D)
+    val SolidCardFill = Color(0xFF161424)
+    val SolidCardBorder = Color(0xFF38334E)
 }
 
 data class GlassStyleConfig(
@@ -76,7 +79,7 @@ data class GlassStyleConfig(
 
 val LocalGlassConfig = staticCompositionLocalOf { GlassStyleConfig() }
 
-// Modifier Extensions for Glass Surfaces
+// Modifier Extensions for Glass Surfaces (PRD 22.2 & 22.10)
 fun Modifier.baseGlass(reduceGlass: Boolean = false): Modifier {
     return if (reduceGlass) {
         this.clip(GlassTokens.radiusMd)
@@ -93,7 +96,7 @@ fun Modifier.raisedGlass(reduceGlass: Boolean = false): Modifier {
     return if (reduceGlass) {
         this.clip(GlassTokens.radiusMd)
             .background(GlassTokens.SolidCardFill)
-            .border(1.5.dp, GlassTokens.SolidCardBorder, GlassTokens.radiusMd)
+            .border(1.dp, GlassTokens.SolidCardBorder, GlassTokens.radiusMd)
     } else {
         this.clip(GlassTokens.radiusMd)
             .background(GlassTokens.RaisedGlassFill)
@@ -105,11 +108,11 @@ fun Modifier.floatingGlass(reduceGlass: Boolean = false): Modifier {
     return if (reduceGlass) {
         this.clip(GlassTokens.radiusLg)
             .background(Color(0xFF221E31))
-            .border(2.dp, GlassTokens.AccentStart, GlassTokens.radiusLg)
+            .border(1.5.dp, GlassTokens.AccentStart, GlassTokens.radiusLg)
     } else {
         this.clip(GlassTokens.radiusLg)
             .background(GlassTokens.FloatingGlassFill)
-            .border(1.5.dp, GlassTokens.FloatingGlassBorder, GlassTokens.radiusLg)
+            .border(1.dp, GlassTokens.FloatingGlassBorder, GlassTokens.radiusLg)
     }
 }
 
