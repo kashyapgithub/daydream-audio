@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.OutputDevice
 import com.example.model.PlainBand
 import com.example.ui.components.ABCompareBar
 import com.example.ui.components.BandTooltipDialog
@@ -104,6 +105,47 @@ fun SimpleModeScreen(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
+                }
+            }
+        }
+
+        // Contextual tip (PRD 12.1 / FR-16): surfaced exactly when it's actionable -
+        // global hook not active + currently on the one output route (built-in
+        // speaker) most likely to be the reason why, per confirmed real-world
+        // behavior of similar apps. Not shown otherwise, so it doesn't nag users
+        // for whom system-wide mode is already working or who are already on
+        // headphones/Bluetooth.
+        if (!uiState.isGlobalHookActive && uiState.currentDevice == OutputDevice.PHONE_SPEAKER) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .raisedGlass(uiState.reduceGlass)
+                        .padding(14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(
+                            imageVector = Icons.Default.Headphones,
+                            contentDescription = null,
+                            tint = GlassTokens.AccentStart,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Not hearing a difference on other apps?",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "Some phones only apply system-wide effects over wired or Bluetooth headphones, not the built-in speaker. Try switching your output — this is a device limitation, not a bug.",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

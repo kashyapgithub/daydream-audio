@@ -469,7 +469,7 @@ Every permission request in this app should follow the same plain-language rule 
 | FR-13 | App requests zero permissions on first launch | All Tier A features (12.1) are usable immediately after install with no permission dialog shown |
 | FR-14 | Dangerous permissions are requested contextually, not upfront | `BLUETOOTH_CONNECT` is only requested when the user taps "Auto-detect my headphones"; a no-permission manual device picker is always available as an alternative |
 | FR-15 | File-based Tier B features avoid storage permissions | Opening a file for Vintage-ify (6.13) or Tier 2 restoration (6.10) uses the system file picker (`ACTION_OPEN_DOCUMENT`), never `READ_EXTERNAL_STORAGE` |
-| FR-16 | App discloses actual session-0 global hook status, never fails silently | Settings screen shows "Active on this device" or "Not supported on this device or output route" based on whether any effect actually attached to session 0, per 12.1 |
+| FR-16 | App discloses actual session-0 global hook status, never fails silently | Settings screen shows "Active on this device" or "Not supported on this device or output route" based on whether any effect actually attached to session 0, per 12.1. Additionally, Simple Mode surfaces a contextual tip directly on the home screen — not buried in Settings — when the hook is inactive AND the user is on the phone's built-in speaker specifically, since this is the single most actionable, most likely fix (confirmed via a real competitor's own stated requirement: "Headphones required, external speakers or Bluetooth Devices" — same built-in-speaker limitation, independently corroborated). |
 
 ---
 
