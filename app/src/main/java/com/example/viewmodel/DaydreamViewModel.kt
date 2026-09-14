@@ -46,6 +46,10 @@ data class DaydreamUiState(
     val devicePrompt: OutputDevice? = null,
     val isOnboardingCompleted: Boolean = true,
     val activeSystemSessions: List<String> = emptyList(),
+    // PRD 12.1 addendum: whether the best-effort session-0 global hook actually
+    // attached on this device. False means this device/ROM doesn't honor it and
+    // the app effects only reach cooperating apps (see PRD 12.1 for the list).
+    val isGlobalHookActive: Boolean = false,
 
     // Spectrum & Audio Reactive (PRD 22.7 Sonic Glass)
     val spectrum: FloatArray = FloatArray(8) { 0.1f },
@@ -253,6 +257,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             systemEffects.activeSessionsSummary.collect { sessions ->
                 _uiState.update { it.copy(activeSystemSessions = sessions) }
+            }
+        }
+
+        // PRD 12.1 addendum: track whether the best-effort session-0 global hook
+        // actually attached on this device, so the UI can be honest about it.
+        viewModelScope.launch {
+            systemEffects.isGlobalHookActive.collect { active ->
+                _uiState.update { it.copy(isGlobalHookActive = active) }
             }
         }
 

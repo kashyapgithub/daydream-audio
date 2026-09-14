@@ -253,7 +253,7 @@ This is the idea that reframes what the app *is*, not just what it does: **every
 
 - Must work system-wide via Android's `AudioEffect` framework (`Equalizer`, `BassBoost`, `Virtualizer`, `DynamicsProcessing`, `LoudnessEnhancer`) as the foundation — same base every serious competitor (Wavelet, Poweramp) uses.
 - No root required for core features.
-- Must work across the top 5 music/streaming apps' audio sessions (Spotify, YouTube Music, local player, Bluetooth output, phone speaker) at minimum for P0.
+- Must work reliably with **cooperating apps** — see 12.1 for the confirmed compatibility list (Spotify and most dedicated local music players). **YouTube is confirmed NOT to support the standard session-broadcast mechanism** (verified against a public equalizer-compatibility tracker and real-device testing) — do not assume it will work, and do not market or design around it working. The best-effort session-0 global hook (12.1) may additionally reach YouTube's audio on some devices, but this is unofficial, device-dependent, and not something P0 scope should be built assuming will hold.
 
 ### 8.1 Required signal chain order (this matters and should not be left to implementation-time guessing)
 
@@ -366,19 +366,32 @@ None of them do the "what's wrong with my song → fix it" translation layer, an
 
 This needs to be a deliberate architectural split, not an afterthought — the single biggest reason competitor apps feel "heavy" is that they ask for permissions upfront, or require the same permission tier for simple and advanced features alike. This PRD requires strict separation.
 
-### 12.1 Why most of this app needs *zero* dangerous runtime permissions
+### 12.1 Why most of this app needs *zero* dangerous runtime permissions — and what "system-wide" actually means in practice
 
-The stock effects this PRD already relies on for the majority of P0 features — `Equalizer`, `BassBoost`, `Virtualizer`, `DynamicsProcessing`, `LoudnessEnhancer` — are attached to an existing audio session via Android's standard session-broadcast mechanism, not by capturing raw audio in the app's own process. The actual signal processing runs inside Android's audio framework itself. This is why a well-built EQ app can feel instant and permission-free: **there's nothing to request, because the app never touches the raw PCM stream.**
+The stock effects this PRD relies on for the majority of P0 features — `Equalizer`, `BassBoost`, `Virtualizer`, `DynamicsProcessing`, `LoudnessEnhancer` — never require a dangerous runtime permission. But **"zero permissions" and "works on every app" are two separate claims, and only the first one is guaranteed.** This subsection was corrected after real-device testing revealed the original draft conflated them. There are two distinct mechanisms, with genuinely different compatibility, and the app should use both:
 
-**Every feature that can be built this way should be** — this is a hard architectural preference, not just a nice-to-have:
+**Mechanism 1 — Session-broadcast cooperation (reliable, but only with apps that opt in).** A media player can broadcast its own audio session ID via `ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION`, letting other apps attach effects to that specific session. This is clean and well-supported *when the source app participates* — but participation is voluntary, and most major streaming apps don't bother. **Verified via a public equalizer-compatibility tracker and real-device testing: YouTube does not implement this API.** Neither does Amazon Music, Pocket Casts, or (despite being a popular target) Poweramp correctly. Apps confirmed to cooperate: Spotify, and a shrinking set of dedicated local/indie music players (Deezer, Phonograph, Shuttle). **Do not design any feature assuming a specific streaming app will cooperate — check the compatibility list, don't assume.**
+
+**Mechanism 2 — Session-0 global hook (best-effort, unofficial, device-dependent).** Android also allows attaching these same stock effects to session ID `0`, which represents the device's master output mix — everything, from every app, combined, right before it reaches the speaker/headphones. Google deprecated this **eleven years ago** and explicitly discourages new development against it — but **it was never removed from the OS**, and a meaningful number of devices still honor it. This is confirmed to be the exact mechanism several popular "works with everything" EQ apps rely on (and Wavelet's own developer has publicly confirmed their "Legacy Mode" still attempts this). It requires nothing beyond `MODIFY_AUDIO_SETTINGS` — no extra permission cost at all. **The app should attempt this on launch as a supplementary hook, in addition to Mechanism 1, not instead of it.**
+
+**The honest limitations of Mechanism 2, which the UI must disclose rather than hide:**
+- **Inconsistent across OEMs and output routes.** Some devices only honor session-0 effects over Bluetooth/wired output, not the built-in speaker (a known, documented behavior — some phones use a separate low-latency "Fast Mixer" audio path for the built-in speaker that bypasses framework-level effects entirely).
+- **Likely bypassed entirely by hardware-tunneled playback**, which video apps are more inclined to use than music apps for power/efficiency reasons. This is the most probable reason a user could enable this hook and still hear no change specifically on a video app like YouTube, even on a device where it works fine for music apps.
+- **This is not fixable in software** — there is no code change that makes an unsupported device honor session 0, or makes a tunneled playback path route through the framework's effect chain. The correct response is transparency, not a workaround that doesn't exist.
+
+**Required UI behavior (implemented — see `SystemAudioEffectManager.isGlobalHookActive` and the Settings screen status card):** the app attempts the session-0 hook at launch and tracks whether any effect actually attached. This state is surfaced to the user in plain language — "Active on this device" vs. "Not supported on this device or output route" — with an honest explanation of what that does and doesn't mean, consistent with the "Translate the Slider" principle in section 5. The app must never silently fail here; if a user moves a slider and hears nothing, they should be able to check Settings and immediately understand why, rather than assume the app is broken.
+
+**Every feature that can be built via either mechanism should be** — this is a hard architectural preference, not just a nice-to-have:
 
 | Feature | Mechanism | Dangerous permission required? |
 |---|---|---|
-| Simple/Advanced EQ (6.1/6.2) | Stock `Equalizer` effect | None |
-| Space / Virtualizer (6.3) | Stock `Virtualizer` effect | None |
+| Simple/Advanced EQ (6.1/6.2) | Stock `Equalizer` effect, via both mechanisms | None |
+| Space / Virtualizer (6.3) | Stock `Virtualizer` effect, via both mechanisms | None |
 | Punch / Dynamics (6.8) | Stock `DynamicsProcessing` effect (API 28+; see 9 for fallback) | None |
 | Volume Boost (6.6) | Stock `LoudnessEnhancer` effect | None |
 | Hiss Removal Tier 1, De-Hum, De-Crackle (6.10) | Custom filters, but can run as *additional* `AudioEffect`-style processors attached the same way as the stock ones — no raw capture required | None |
+
+**The only fully guaranteed path, regardless of device/OEM/app cooperation, remains Daydream Audio's own built-in player** (already the basis for the file-based Tier B flows in 12.2). This should be treated as the app's primary, always-reliable experience — not a fallback — with both Mechanism 1 and Mechanism 2 framed to the user as a bonus "also try to reach whatever else is playing" capability that may or may not work depending on their device and the other app.
 
 ### 12.2 Features that genuinely require a heavier permission — and how to minimize the damage
 
@@ -456,6 +469,7 @@ Every permission request in this app should follow the same plain-language rule 
 | FR-13 | App requests zero permissions on first launch | All Tier A features (12.1) are usable immediately after install with no permission dialog shown |
 | FR-14 | Dangerous permissions are requested contextually, not upfront | `BLUETOOTH_CONNECT` is only requested when the user taps "Auto-detect my headphones"; a no-permission manual device picker is always available as an alternative |
 | FR-15 | File-based Tier B features avoid storage permissions | Opening a file for Vintage-ify (6.13) or Tier 2 restoration (6.10) uses the system file picker (`ACTION_OPEN_DOCUMENT`), never `READ_EXTERNAL_STORAGE` |
+| FR-16 | App discloses actual session-0 global hook status, never fails silently | Settings screen shows "Active on this device" or "Not supported on this device or output route" based on whether any effect actually attached to session 0, per 12.1 |
 
 ---
 

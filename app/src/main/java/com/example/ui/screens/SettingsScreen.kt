@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -156,6 +158,46 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Section 1.5: System-Wide Mode status (PRD 12.1 addendum)
+        // Honest, plain-language disclosure of the session-0 global hook's real
+        // behavior - it's a best-effort, unofficial mechanism, not a guarantee.
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .baseGlass(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (uiState.isGlobalHookActive) Icons.Default.CheckCircle else Icons.Default.WarningAmber,
+                            contentDescription = null,
+                            tint = if (uiState.isGlobalHookActive) GlassTokens.AccentSafe else GlassTokens.AccentWarning,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "System-Wide Mode",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.TextPrimary
+                        )
+                    }
+                    Text(
+                        text = if (uiState.isGlobalHookActive) {
+                            "Active on this device — effects reach most apps' audio, including music and video players. Some apps that use hardware-accelerated playback (a few video apps included) may still bypass this even while it's active."
+                        } else {
+                            "Not supported on this device or output route. Your phone/ROM doesn't allow apps to hook the master audio output this way — this is a device limitation, not a bug. Effects will still work with cooperating apps (Spotify and most local music players) via a different, guaranteed method. Try switching output (e.g. wired or Bluetooth headphones) — some devices only block this on the built-in speaker."
+                        },
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
         }

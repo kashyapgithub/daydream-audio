@@ -40,6 +40,16 @@ class SystemAudioEffectManager private constructor() {
     private val _activeSessionsSummary = MutableStateFlow<List<String>>(emptyList())
     val activeSessionsSummary: StateFlow<List<String>> = _activeSessionsSummary.asStateFlow()
 
+    // PRD 12.1 addendum: best-effort global (session 0) hook status.
+    // Session 0 attachment is an unofficial, deprecated-but-never-removed Android
+    // mechanism (see PRD 12.1 for full explanation). It is inconsistent across
+    // OEMs/output routes, and is very likely bypassed entirely for hardware-tunneled
+    // video/audio playback paths that some apps (notably video apps) use. This flag
+    // lets the UI tell the user the truth about whether it actually attached on
+    // their specific device, rather than silently doing nothing.
+    private val _isGlobalHookActive = MutableStateFlow(false)
+    val isGlobalHookActive: StateFlow<Boolean> = _isGlobalHookActive.asStateFlow()
+
     // Current synchronized effect states
     private var currentEqGains = mutableMapOf<PlainBand, Float>(
         PlainBand.RUMBLE to 0f,
@@ -120,9 +130,27 @@ class SystemAudioEffectManager private constructor() {
             sessions[sessionId] = holder
             applyStateToSession(holder)
             updateSessionsSummary()
+
+            // PRD 12.1 addendum: session 0 is the global output mix. If we got at
+            // least one real effect engine on it, the best-effort system-wide hook
+            // is genuinely active on this device. If every constructor above threw,
+            // this device/ROM doesn't honor session 0 at all - be honest about it
+            // instead of pretending it worked.
+            if (sessionId == 0) {
+                val anyEffectAttached = holder.equalizer != null || holder.virtualizer != null ||
+                    holder.loudnessEnhancer != null || holder.dynamicsProcessing != null
+                _isGlobalHookActive.value = anyEffectAttached
+                if (!anyEffectAttached) {
+                    Log.w(TAG, "Global session 0 hook unsupported on this device/ROM")
+                }
+            }
+
             Log.i(TAG, "Successfully attached AudioEffects to session $sessionId ($packageName)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach AudioEffects to session $sessionId", e)
+            if (sessionId == 0) {
+                _isGlobalHookActive.value = false
+            }
         }
     }
 
@@ -142,6 +170,9 @@ class SystemAudioEffectManager private constructor() {
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Error releasing session $sessionId: ${e.message}")
+            }
+            if (sessionId == 0) {
+                _isGlobalHookActive.value = false
             }
             updateSessionsSummary()
             Log.d(TAG, "Released audio session $sessionId")
