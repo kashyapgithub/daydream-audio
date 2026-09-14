@@ -333,7 +333,7 @@ fun MemoryPostcardDialog(
             "00s_early_mp3" -> "2000s 128kbps MP3"
             else -> id.replace("_", " ").replaceFirstChar { it.uppercase() }
         }
-    } ?: if (uiState.vintageModeEnabled) "Vintage-ify Acoustic Profile" else "Time Machine Master"
+    } ?: if (uiState.isVintageMode) "Vintage-ify Acoustic Profile" else "Time Machine Master"
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -341,7 +341,7 @@ fun MemoryPostcardDialog(
             Button(
                 onClick = {
                     val shareText = "🎧 Listening with Daydream Audio Time Machine ($activePresetName)\n" +
-                            "Warmth: ${uiState.vintageWarmth.toInt()}% | Saturation: ${uiState.vintageTapeSaturation.toInt()}%\n" +
+                            "Warble: ${uiState.wowFlutterDepth.toInt()}% | Crackle: ${uiState.vintageNoiseLevel.toInt()}%\n" +
                             "✨ Enhanced with Daydream Audio's Liquid Glass DSP engine"
                     val sendIntent = Intent().apply {
                         action = Intent.ACTION_SEND
@@ -363,7 +363,7 @@ fun MemoryPostcardDialog(
                 Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
             }
         },
-        containerColor = GlassTokens.BackgroundDark,
+        containerColor = GlassTokens.SolidCardFill,
         title = {
             Text(
                 text = "Memory Postcard Export",
@@ -380,14 +380,14 @@ fun MemoryPostcardDialog(
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                GlassTokens.SurfaceGlassRaised,
-                                GlassTokens.SurfaceGlass
+                                GlassTokens.RaisedGlassFill,
+                                GlassTokens.BaseGlassFill
                             )
                         )
                     )
-                    .border(1.dp, GlassTokens.BorderGlass, GlassTokens.radiusLg)
+                    .border(1.dp, GlassTokens.BaseGlassBorder, GlassTokens.radiusLg)
                     .padding(16.dp),
-                horizontalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Postcard Preview Card (9:16 aspect feel)
                 Box(
@@ -475,9 +475,9 @@ fun MemoryPostcardDialog(
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            PresetBadge(text = "Warmth: ${uiState.vintageWarmth.toInt()}%")
-                            PresetBadge(text = "Sat: ${uiState.vintageTapeSaturation.toInt()}%")
-                            PresetBadge(text = "Crackle: ${uiState.vintageNoiseLevel.toInt()}%")
+                            PresetBadge(text = "Warble: ${uiState.wowFlutterDepth.toInt()}%")
+                            PresetBadge(text = "Noise: ${uiState.vintageNoiseLevel.toInt()}%")
+                            PresetBadge(text = uiState.vintageEraName)
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
