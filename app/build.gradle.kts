@@ -8,7 +8,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.aistudio.daydreamaudio.rqtx"
+        applicationId = "com.daydreamaudio.app"
         minSdk = 24
         targetSdk = 35
         versionCode = 1

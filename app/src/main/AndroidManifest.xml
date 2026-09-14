@@ -3,7 +3,10 @@
 
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- BLUETOOTH_CONNECT intentionally NOT declared: device name detection uses
+         AudioDeviceInfo.productName, which does not require this permission.
+         Declaring it here would show "Nearby devices" in the Play Store listing
+         for zero functional benefit — violates PRD 12.1/12.3 zero-friction requirement. -->
 
     <application
         android:allowBackup="true"

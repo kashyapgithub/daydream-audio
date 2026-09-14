@@ -1,6 +1,0 @@
-{
-  "name": "Daydream Audio",
-  "description": "A plain-English audio EQ, virtualizer, and restoration suite for Android.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

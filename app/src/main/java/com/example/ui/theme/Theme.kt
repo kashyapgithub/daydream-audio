@@ -38,6 +38,11 @@ object GlassTokens {
     val AccentSafe = Color(0xFF34C759)  // Limiter safe indicator
     val AccentWarning = Color(0xFFFF3B30) // Loudness limit warning
     val AccentCyan = Color(0xFF38EF7D)
+    val AccentCool = Color(0xFF6B4EE6)  // Cooler violet/indigo tint for treble-dominant Sonic Glass (22.7)
+
+    // Base backdrop tokens (previously hardcoded inline in SonicGlassBackground)
+    val BackdropBase = Color(0xFF0C0A14)
+    val BackdropScrim = Color(0xFF090810)
 
     val AccentGradient = Brush.horizontalGradient(
         listOf(AccentStart, AccentEnd)

@@ -97,7 +97,7 @@ fun SonicGlassBackground(
     val targetTint = when {
         reduceMotion || reduceGlass -> Color.Transparent
         isWarmDominant -> GlassTokens.AccentStart.copy(alpha = 0.16f)
-        else -> Color(0xFF6B4EE6).copy(alpha = 0.14f) // Cooler violet/indigo for airy/crisp audio
+        else -> GlassTokens.AccentCool.copy(alpha = 0.14f) // Cooler violet/indigo for airy/crisp audio
     }
 
     val ambientTint by animateColorAsState(
@@ -106,7 +106,7 @@ fun SonicGlassBackground(
         label = "sonic_ambient_tint"
     )
 
-    Box(modifier = modifier.fillMaxSize().background(Color(0xFF0C0A14))) {
+    Box(modifier = modifier.fillMaxSize().background(GlassTokens.BackdropBase)) {
         if (!reduceGlass) {
             // Ambient photo backdrop
             Image(
@@ -162,7 +162,7 @@ fun SonicGlassBackground(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF090810).copy(alpha = if (reduceGlass) 0.98f else 0.48f))
+                .background(GlassTokens.BackdropScrim.copy(alpha = if (reduceGlass) 0.98f else 0.48f))
         )
 
         content()
