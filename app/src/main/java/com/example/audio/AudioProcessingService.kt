@@ -134,7 +134,7 @@ class AudioProcessingService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Daydream Audio")
             .setContentText("Active • Enhancing device & streaming audio")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification_audio)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)

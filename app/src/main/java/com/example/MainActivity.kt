@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.audio.AudioProcessingService
 import com.example.audio.SystemAudioEffectManager
 import com.example.ui.components.NowPlayingGlassBar
 import com.example.ui.components.SonicGlassBackground
@@ -73,9 +74,6 @@ import com.example.ui.theme.floatingGlass
 import com.example.viewmodel.AppNavTab
 import com.example.viewmodel.DaydreamViewModel
 import kotlinx.coroutines.delay
-
-import com.example.audio.AudioProcessingService
-import com.example.audio.SystemAudioEffectManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
