@@ -129,7 +129,17 @@ data class DaydreamUiState(
 
     // Dialog Visibility
     val showImportPresetDialog: Boolean = false,
-    val showMemoryPostcardDialog: Boolean = false
+    val showMemoryPostcardDialog: Boolean = false,
+
+    // Time & Space FX: Reverb, Echo, Tempo & Lofi Mode
+    val playbackSpeed: Float = 1.0f,
+    val isLofiMode: Boolean = false,
+    val reverbWetPercent: Float = 0f,
+    val reverbRoomSizePercent: Float = 75f,
+    val reverbDampingPercent: Float = 35f,
+    val echoWetPercent: Float = 0f,
+    val echoTimeMs: Int = 320,
+    val echoFeedbackPercent: Float = 30f
 )
 
 class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
@@ -138,6 +148,20 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     private val audioEngine = AudioEngine()
     private val systemEffects = SystemAudioEffectManager.instance
     private val deviceManager = AudioDeviceManager(application)
+
+    // Pre-lofi saved state for smooth restoration when Lofi Mode is toggled off
+    private var preLofiSpeed = 1.0f
+    private var preLofiReverbWet = 0f
+    private var preLofiReverbRoom = 75f
+    private var preLofiReverbDamp = 35f
+    private var preLofiEchoWet = 0f
+    private var preLofiEchoTime = 320
+    private var preLofiEchoFeedback = 30f
+    private var preLofiWarmth = 0f
+    private var preLofiAir = 0f
+    private var preLofiVintageMode = false
+    private var preLofiWowDepth = 0f
+    private var preLofiVintageNoise = 0f
 
     private val _uiState = MutableStateFlow(
         DaydreamUiState(
@@ -390,6 +414,154 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(deCrackleEnabled = current, activePresetId = null) }
     }
 
+    // Time & Space FX: Tempo, Reverb, Echo, and Lofi Mode
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 1.5f)
+        audioEngine.setPlaybackSpeed(clamped)
+        _uiState.update { it.copy(playbackSpeed = clamped) }
+    }
+
+    fun setReverbWet(percent: Float) {
+        val clamped = percent.coerceIn(0f, 100f)
+        audioEngine.reverbWet = clamped
+        _uiState.update { it.copy(reverbWetPercent = clamped) }
+    }
+
+    fun setReverbRoomSize(percent: Float) {
+        val clamped = percent.coerceIn(0f, 100f)
+        audioEngine.reverbRoomSize = clamped
+        _uiState.update { it.copy(reverbRoomSizePercent = clamped) }
+    }
+
+    fun setReverbDamping(percent: Float) {
+        val clamped = percent.coerceIn(0f, 100f)
+        audioEngine.reverbDamping = clamped
+        _uiState.update { it.copy(reverbDampingPercent = clamped) }
+    }
+
+    fun setEchoWet(percent: Float) {
+        val clamped = percent.coerceIn(0f, 100f)
+        audioEngine.echoWet = clamped
+        _uiState.update { it.copy(echoWetPercent = clamped) }
+    }
+
+    fun setEchoTimeMs(timeMs: Int) {
+        val clamped = timeMs.coerceIn(50, 1000)
+        audioEngine.echoTimeMs = clamped
+        _uiState.update { it.copy(echoTimeMs = clamped) }
+    }
+
+    fun setEchoFeedback(percent: Float) {
+        val clamped = percent.coerceIn(0f, 80f)
+        audioEngine.echoFeedback = clamped
+        _uiState.update { it.copy(echoFeedbackPercent = clamped) }
+    }
+
+    fun toggleLofiMode() {
+        val current = _uiState.value
+        val turnOn = !current.isLofiMode
+
+        if (turnOn) {
+            // Save current settings for restoration
+            preLofiSpeed = current.playbackSpeed
+            preLofiReverbWet = current.reverbWetPercent
+            preLofiReverbRoom = current.reverbRoomSizePercent
+            preLofiReverbDamp = current.reverbDampingPercent
+            preLofiEchoWet = current.echoWetPercent
+            preLofiEchoTime = current.echoTimeMs
+            preLofiEchoFeedback = current.echoFeedbackPercent
+            preLofiWarmth = current.eqGains[PlainBand.WARMTH] ?: 0f
+            preLofiAir = current.eqGains[PlainBand.AIR] ?: 0f
+            preLofiVintageMode = current.isVintageMode
+            preLofiWowDepth = current.wowFlutterDepth
+            preLofiVintageNoise = current.vintageNoiseLevel
+
+            // Apply Lofi coordinates: slowed tempo, dreamy reverb, analog echo, warm tape EQ, tape flutter
+            val lofiSpeed = 0.85f
+            val lofiReverbWet = 35f
+            val lofiReverbRoom = 75f
+            val lofiReverbDamp = 40f
+            val lofiEchoWet = 20f
+            val lofiEchoTime = 320
+            val lofiEchoFeedback = 35f
+            val lofiWarmth = 4f
+            val lofiAir = -5f
+
+            audioEngine.setPlaybackSpeed(lofiSpeed)
+            audioEngine.reverbWet = lofiReverbWet
+            audioEngine.reverbRoomSize = lofiReverbRoom
+            audioEngine.reverbDamping = lofiReverbDamp
+            audioEngine.echoWet = lofiEchoWet
+            audioEngine.echoTimeMs = lofiEchoTime
+            audioEngine.echoFeedback = lofiEchoFeedback
+            audioEngine.eqGains[PlainBand.WARMTH] = lofiWarmth
+            audioEngine.eqGains[PlainBand.AIR] = lofiAir
+            audioEngine.vintageMode = true
+            audioEngine.wowFlutterDepth = 40f
+            audioEngine.vintageNoiseLevel = 30f
+
+            val updatedEq = current.eqGains.toMutableMap()
+            updatedEq[PlainBand.WARMTH] = lofiWarmth
+            updatedEq[PlainBand.AIR] = lofiAir
+            systemEffects.updatePlainEqGains(updatedEq)
+
+            _uiState.update {
+                it.copy(
+                    isLofiMode = true,
+                    playbackSpeed = lofiSpeed,
+                    reverbWetPercent = lofiReverbWet,
+                    reverbRoomSizePercent = lofiReverbRoom,
+                    reverbDampingPercent = lofiReverbDamp,
+                    echoWetPercent = lofiEchoWet,
+                    echoTimeMs = lofiEchoTime,
+                    echoFeedbackPercent = lofiEchoFeedback,
+                    eqGains = updatedEq,
+                    isVintageMode = true,
+                    wowFlutterDepth = 40f,
+                    vintageNoiseLevel = 30f,
+                    notificationMessage = "Lofi Mode Active: 0.85x Slowed • Dreamy Reverb • Warm Rolloff"
+                )
+            }
+        } else {
+            // Restore previous settings
+            audioEngine.setPlaybackSpeed(preLofiSpeed)
+            audioEngine.reverbWet = preLofiReverbWet
+            audioEngine.reverbRoomSize = preLofiReverbRoom
+            audioEngine.reverbDamping = preLofiReverbDamp
+            audioEngine.echoWet = preLofiEchoWet
+            audioEngine.echoTimeMs = preLofiEchoTime
+            audioEngine.echoFeedback = preLofiEchoFeedback
+            audioEngine.eqGains[PlainBand.WARMTH] = preLofiWarmth
+            audioEngine.eqGains[PlainBand.AIR] = preLofiAir
+            audioEngine.vintageMode = preLofiVintageMode
+            audioEngine.wowFlutterDepth = preLofiWowDepth
+            audioEngine.vintageNoiseLevel = preLofiVintageNoise
+
+            val restoredEq = current.eqGains.toMutableMap()
+            restoredEq[PlainBand.WARMTH] = preLofiWarmth
+            restoredEq[PlainBand.AIR] = preLofiAir
+            systemEffects.updatePlainEqGains(restoredEq)
+
+            _uiState.update {
+                it.copy(
+                    isLofiMode = false,
+                    playbackSpeed = preLofiSpeed,
+                    reverbWetPercent = preLofiReverbWet,
+                    reverbRoomSizePercent = preLofiReverbRoom,
+                    reverbDampingPercent = preLofiReverbDamp,
+                    echoWetPercent = preLofiEchoWet,
+                    echoTimeMs = preLofiEchoTime,
+                    echoFeedbackPercent = preLofiEchoFeedback,
+                    eqGains = restoredEq,
+                    isVintageMode = preLofiVintageMode,
+                    wowFlutterDepth = preLofiWowDepth,
+                    vintageNoiseLevel = preLofiVintageNoise,
+                    notificationMessage = "Lofi Mode disabled — restored previous sound profile"
+                )
+            }
+        }
+    }
+
     // Diagnostics Wizard (PRD 6.1)
     fun openWizardDialog() {
         _uiState.update { it.copy(showWizardDialog = true) }
@@ -606,6 +778,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             put("compRatio", s.compRatio)
             put("compAttackMs", s.compAttackMs)
             put("compReleaseMs", s.compReleaseMs)
+            put("reverbWetPercent", s.reverbWetPercent)
+            put("reverbRoomSizePercent", s.reverbRoomSizePercent)
+            put("reverbDampingPercent", s.reverbDampingPercent)
+            put("echoTimeMs", s.echoTimeMs)
+            put("echoFeedbackPercent", s.echoFeedbackPercent)
+            put("echoWetPercent", s.echoWetPercent)
+            put("playbackSpeed", s.playbackSpeed)
+            put("isLofiMode", s.isLofiMode)
         }
         return json.toString(2)
     }
@@ -629,6 +809,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val hiss = json.optDouble("hissRemovalPercent", 0.0).toFloat()
             val deHum = json.optBoolean("deHumEnabled", false)
             val deCrackle = json.optBoolean("deCrackleEnabled", false)
+            val reverbWet = json.optDouble("reverbWetPercent", 0.0).toFloat()
+            val reverbRoom = json.optDouble("reverbRoomSizePercent", 75.0).toFloat()
+            val reverbDamp = json.optDouble("reverbDampingPercent", 35.0).toFloat()
+            val echoTime = json.optInt("echoTimeMs", 320)
+            val echoFeedback = json.optDouble("echoFeedbackPercent", 30.0).toFloat()
+            val echoWet = json.optDouble("echoWetPercent", 0.0).toFloat()
+            val speed = json.optDouble("playbackSpeed", 1.0).toFloat()
+            val lofi = json.optBoolean("isLofiMode", false)
 
             audioEngine.eqGains.putAll(importedEq)
             systemEffects.updatePlainEqGains(importedEq)
@@ -642,6 +830,13 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             audioEngine.hissRemoval = hiss
             audioEngine.deHumEnabled = deHum
             audioEngine.deCrackleEnabled = deCrackle
+            audioEngine.reverbWet = reverbWet
+            audioEngine.reverbRoomSize = reverbRoom
+            audioEngine.reverbDamping = reverbDamp
+            audioEngine.echoTimeMs = echoTime
+            audioEngine.echoFeedback = echoFeedback
+            audioEngine.echoWet = echoWet
+            audioEngine.setPlaybackSpeed(speed)
 
             _uiState.update {
                 it.copy(
@@ -653,6 +848,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     hissRemovalPercent = hiss,
                     deHumEnabled = deHum,
                     deCrackleEnabled = deCrackle,
+                    reverbWetPercent = reverbWet,
+                    reverbRoomSizePercent = reverbRoom,
+                    reverbDampingPercent = reverbDamp,
+                    echoTimeMs = echoTime,
+                    echoFeedbackPercent = echoFeedback,
+                    echoWetPercent = echoWet,
+                    playbackSpeed = speed,
+                    isLofiMode = lofi,
                     notificationMessage = "Preset imported successfully!"
                 )
             }
@@ -748,6 +951,9 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.deHumEnabled = false
         audioEngine.deCrackleEnabled = false
         audioEngine.vintageMode = false
+        audioEngine.reverbWet = 0f
+        audioEngine.echoWet = 0f
+        audioEngine.setPlaybackSpeed(1.0f)
 
         _uiState.update {
             it.copy(
@@ -760,6 +966,10 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                 deHumEnabled = false,
                 deCrackleEnabled = false,
                 isVintageMode = false,
+                reverbWetPercent = 0f,
+                echoWetPercent = 0f,
+                playbackSpeed = 1.0f,
+                isLofiMode = false,
                 activePresetId = null,
                 notificationMessage = "All sliders reset to neutral flat"
             )
@@ -838,6 +1048,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.compAttackMs = s.compAttackMs
         audioEngine.compReleaseMs = s.compReleaseMs
         audioEngine.limiterCeilingDb = s.limiterCeilingDb
+
+        audioEngine.reverbWet = s.reverbWetPercent
+        audioEngine.reverbRoomSize = s.reverbRoomSizePercent
+        audioEngine.reverbDamping = s.reverbDampingPercent
+        audioEngine.echoWet = s.echoWetPercent
+        audioEngine.echoTimeMs = s.echoTimeMs
+        audioEngine.echoFeedback = s.echoFeedbackPercent
+        audioEngine.setPlaybackSpeed(s.playbackSpeed)
     }
 
     override fun onCleared() {

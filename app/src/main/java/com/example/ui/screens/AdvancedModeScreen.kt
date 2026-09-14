@@ -326,6 +326,116 @@ fun AdvancedModeScreen(
             }
         }
 
+        // Time & Space FX: Reverb & Delay
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .raisedGlass(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "Algorithmic Reverb & Delay (Time & Space)",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    Text(
+                        text = "Schroeder-Freeverb 8-comb/4-allpass network & stereo ping-pong delay",
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Reverb Controls
+                    LiquidSlider(
+                        title = "Reverb Wet Mix",
+                        value = uiState.reverbWetPercent,
+                        onValueChange = { viewModel.setReverbWet(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "Wet/Dry Blend",
+                        showTechnical = true,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    LiquidSlider(
+                        title = "Reverb Room Size",
+                        value = uiState.reverbRoomSizePercent,
+                        onValueChange = { viewModel.setReverbRoomSize(it) },
+                        valueRange = 10f..100f,
+                        unit = "%",
+                        technicalValue = "Comb Feedback 0.70..0.98",
+                        showTechnical = true,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    LiquidSlider(
+                        title = "Reverb HF Damping",
+                        value = uiState.reverbDampingPercent,
+                        onValueChange = { viewModel.setReverbDamping(it) },
+                        valueRange = 5f..100f,
+                        unit = "%",
+                        technicalValue = "Absorption Coeff",
+                        showTechnical = true,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Echo / Delay Controls
+                    LiquidSlider(
+                        title = "Echo Delay Wet Mix",
+                        value = uiState.echoWetPercent,
+                        onValueChange = { viewModel.setEchoWet(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "Delay Tap Output",
+                        showTechnical = true,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    LiquidSlider(
+                        title = "Echo Delay Time",
+                        value = uiState.echoTimeMs.toFloat(),
+                        onValueChange = { viewModel.setEchoTimeMs(it.toInt()) },
+                        valueRange = 50f..1000f,
+                        unit = "ms",
+                        technicalValue = "${uiState.echoTimeMs}ms (delay buffer)",
+                        showTechnical = true,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    LiquidSlider(
+                        title = "Echo Feedback (Repeats)",
+                        value = uiState.echoFeedbackPercent,
+                        onValueChange = { viewModel.setEchoFeedback(it) },
+                        valueRange = 0f..80f,
+                        unit = "%",
+                        technicalValue = "Crossfeed Loop Gain",
+                        showTechnical = true,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Playback Tempo
+                    LiquidSlider(
+                        title = "Playback Speed / Tempo",
+                        value = uiState.playbackSpeed,
+                        onValueChange = { viewModel.setPlaybackSpeed(it) },
+                        valueRange = 0.5f..1.5f,
+                        unit = "x",
+                        technicalValue = "Time-Stretch Ratio",
+                        showTechnical = true,
+                        reduceGlass = uiState.reduceGlass
+                    )
+                }
+            }
+        }
+
         // Preset Export / Import (PRD 6.2 & FR-12)
         item {
             Box(

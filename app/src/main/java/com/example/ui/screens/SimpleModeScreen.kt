@@ -377,6 +377,118 @@ fun SimpleModeScreen(
             }
         }
 
+        // Lofi Mode Macro Card
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(GlassTokens.radiusMd)
+                    .background(
+                        if (uiState.isLofiMode) GlassTokens.AccentStart.copy(alpha = 0.20f)
+                        else Color.White.copy(alpha = 0.05f)
+                    )
+                    .border(
+                        1.dp,
+                        if (uiState.isLofiMode) GlassTokens.AccentStart else Color.White.copy(alpha = 0.12f),
+                        GlassTokens.radiusMd
+                    )
+                    .padding(14.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "☕ Lofi Mode",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (uiState.isLofiMode) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(GlassTokens.radiusPill)
+                                        .background(
+                                            if (uiState.isLofiMode) GlassTokens.AccentStart.copy(alpha = 0.25f)
+                                            else Color.White.copy(alpha = 0.08f)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (uiState.isLofiMode) GlassTokens.AccentStart else Color.White.copy(alpha = 0.15f),
+                                            GlassTokens.radiusPill
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (uiState.isLofiMode) "0.85x • Reverb • Warble" else "1-Tap Chill",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (uiState.isLofiMode) GlassTokens.AccentStart else GlassTokens.TextSecondary
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Slowed tempo, dreamy algorithmic reverb, warm tape rolloff & subtle flutter",
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+
+                        Switch(
+                            checked = uiState.isLofiMode,
+                            onCheckedChange = { viewModel.toggleLofiMode() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = GlassTokens.AccentStart
+                            ),
+                            modifier = Modifier.testTag("lofi_mode_switch")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Quick Playback Tempo selector chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(0.80f to "0.80x", 0.85f to "0.85x", 0.90f to "0.90x", 1.0f to "1.0x (Norm)", 1.15f to "1.15x").forEach { (speed, label) ->
+                            val isSelected = kotlin.math.abs(uiState.playbackSpeed - speed) < 0.02f
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(GlassTokens.radiusSm)
+                                    .background(
+                                        if (isSelected) GlassTokens.AccentStart.copy(alpha = 0.25f)
+                                        else Color.White.copy(alpha = 0.05f)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) GlassTokens.AccentStart else Color.White.copy(alpha = 0.10f),
+                                        GlassTokens.radiusSm
+                                    )
+                                    .clickable { viewModel.setPlaybackSpeed(speed) }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Card 1: Restoration & Noise Reduction (PRD 6.10 Tier 1)
         item {
             Box(
@@ -687,6 +799,133 @@ fun SimpleModeScreen(
                         isWarning = uiState.loudnessPercent > 75f,
                         warningText = if (uiState.loudnessPercent > 75f) "Past 75% loudness trades clarity for output" else "Soft brickwall limiter active (no clipping)",
                         accentColor = if (uiState.loudnessPercent > 75f) GlassTokens.AccentWarning else GlassTokens.AccentSafe,
+                        reduceGlass = uiState.reduceGlass
+                    )
+                }
+            }
+        }
+
+        // Card 4: Atmospheric Reverb & Echo Delay
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .raisedGlass(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Atmospheric Reverb & Echo",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "Algorithmic room reverb and tape delay repeats",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+
+                        if (uiState.reverbWetPercent > 0f || uiState.echoWetPercent > 0f || uiState.playbackSpeed != 1.0f) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.setReverbWet(0f)
+                                    viewModel.setEchoWet(0f)
+                                    viewModel.setPlaybackSpeed(1.0f)
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.RestartAlt,
+                                    contentDescription = "Reset Reverb & Echo",
+                                    tint = GlassTokens.TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Reverb Wet Slider
+                    LiquidSlider(
+                        title = "Reverb (Space Decay)",
+                        value = uiState.reverbWetPercent,
+                        onValueChange = { viewModel.setReverbWet(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "Freeverb 8-Comb + 4-Allpass",
+                        showTechnical = uiState.showTechnicalValues,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    // Reverb Room Size Slider
+                    LiquidSlider(
+                        title = "Reverb Room Size",
+                        value = uiState.reverbRoomSizePercent,
+                        onValueChange = { viewModel.setReverbRoomSize(it) },
+                        valueRange = 10f..100f,
+                        unit = "%",
+                        technicalValue = "Comb Feedback Gain",
+                        showTechnical = uiState.showTechnicalValues,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Echo / Delay Wet Slider
+                    LiquidSlider(
+                        title = "Echo Mix (Delay)",
+                        value = uiState.echoWetPercent,
+                        onValueChange = { viewModel.setEchoWet(it) },
+                        valueRange = 0f..100f,
+                        unit = "%",
+                        technicalValue = "Stereo Ping-Pong Delay Line",
+                        showTechnical = uiState.showTechnicalValues,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    // Echo Time Slider (ms)
+                    LiquidSlider(
+                        title = "Echo Time",
+                        value = uiState.echoTimeMs.toFloat(),
+                        onValueChange = { viewModel.setEchoTimeMs(it.toInt()) },
+                        valueRange = 50f..800f,
+                        unit = "ms",
+                        technicalValue = "${uiState.echoTimeMs}ms delay tap",
+                        showTechnical = uiState.showTechnicalValues,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    // Echo Feedback Slider (%)
+                    LiquidSlider(
+                        title = "Echo Feedback (Repeats)",
+                        value = uiState.echoFeedbackPercent,
+                        onValueChange = { viewModel.setEchoFeedback(it) },
+                        valueRange = 0f..80f,
+                        unit = "%",
+                        technicalValue = "Tape-Damped Loop",
+                        showTechnical = uiState.showTechnicalValues,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Playback Speed Slider
+                    LiquidSlider(
+                        title = "Playback Tempo",
+                        value = uiState.playbackSpeed,
+                        onValueChange = { viewModel.setPlaybackSpeed(it) },
+                        valueRange = 0.5f..1.5f,
+                        unit = "x",
+                        technicalValue = "Sonic Time-Stretch",
+                        showTechnical = uiState.showTechnicalValues,
                         reduceGlass = uiState.reduceGlass
                     )
                 }

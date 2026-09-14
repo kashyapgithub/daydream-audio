@@ -83,7 +83,15 @@ data class PresetExportBundle(
     val compThresholdDb: Float = -18f,
     val compRatio: Float = 2.5f,
     val compAttackMs: Float = 20f,
-    val compReleaseMs: Float = 150f
+    val compReleaseMs: Float = 150f,
+    val reverbWetPercent: Float = 0f,
+    val reverbRoomSizePercent: Float = 75f,
+    val reverbDampingPercent: Float = 35f,
+    val echoTimeMs: Int = 320,
+    val echoFeedbackPercent: Float = 30f,
+    val echoWetPercent: Float = 0f,
+    val playbackSpeed: Float = 1.0f,
+    val isLofiMode: Boolean = false
 )
 
 /**

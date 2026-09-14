@@ -3,6 +3,7 @@ package com.example.audio
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.media.PlaybackParams
 import com.example.model.DemoTrack
 import com.example.model.PlainBand
 import kotlinx.coroutines.CoroutineScope
@@ -81,6 +82,21 @@ class AudioEngine {
     var compAttackMs: Float = 20f
     var compReleaseMs: Float = 150f
     var limiterCeilingDb: Float = -0.5f
+
+    // Reverb Parameters (Freeverb 8-Comb + 4-AllPass Network)
+    var reverbWet: Float = 0f // 0 to 100%
+    var reverbRoomSize: Float = 75f // 0 to 100%
+    var reverbDamping: Float = 35f // 0 to 100%
+    var reverbWidth: Float = 100f // 0 to 100%
+
+    // Echo / Delay Parameters (Stereo Ping-Pong with Tape Damping)
+    var echoWet: Float = 0f // 0 to 100%
+    var echoTimeMs: Int = 320 // 50 to 1000 ms
+    var echoFeedback: Float = 30f // 0 to 80%
+    var echoPingPong: Boolean = true
+
+    // Playback Tempo (0.5x to 1.5x, API 23+ PlaybackParams time-stretching)
+    var playbackSpeed: Float = 1.0f
 
     // Vintage-ify mode (PRD 6.13)
     var vintageMode: Boolean = false
@@ -172,6 +188,49 @@ class AudioEngine {
         }
     }
 
+    // Schroeder / Freeverb Low-Pass Feedback Comb Filter with anti-denormal flush
+    class CombFilter(val size: Int) {
+        private val buffer = DoubleArray(size)
+        private var index = 0
+        var filterStore = 0.0
+
+        fun process(input: Double, feedback: Double, damping: Double): Double {
+            val output = buffer[index]
+            filterStore = output * (1.0 - damping) + filterStore * damping
+            if (abs(filterStore) < 1e-15) filterStore = 0.0
+            val next = input + filterStore * feedback
+            buffer[index] = if (abs(next) < 1e-15) 0.0 else next
+            index = (index + 1) % size
+            return output
+        }
+
+        fun reset() {
+            buffer.fill(0.0)
+            index = 0
+            filterStore = 0.0
+        }
+    }
+
+    // Schroeder / Freeverb All-Pass Filter with anti-denormal flush
+    class AllPassFilter(val size: Int) {
+        private val buffer = DoubleArray(size)
+        private var index = 0
+
+        fun process(input: Double, feedback: Double = 0.5): Double {
+            val bufOut = buffer[index]
+            val output = -input + bufOut
+            val next = input + bufOut * feedback
+            buffer[index] = if (abs(next) < 1e-15) 0.0 else next
+            index = (index + 1) % size
+            return if (abs(output) < 1e-15) 0.0 else output
+        }
+
+        fun reset() {
+            buffer.fill(0.0)
+            index = 0
+        }
+    }
+
     // 5 Simple Mode EQ Biquads
     private val simpleFilters = mapOf(
         PlainBand.RUMBLE to BiquadState(),
@@ -207,6 +266,20 @@ class AudioEngine {
     private val delayBufferR = DoubleArray(delayBufferSize)
     private var delayWriteIndex = 0
 
+    // Reverb Engine State (Standard Freeverb 44.1kHz delay sizes with +23 right stereo spread)
+    private val leftCombs = listOf(1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617).map { CombFilter(it) }
+    private val rightCombs = listOf(1139, 1211, 1300, 1379, 1445, 1514, 1580, 1640).map { CombFilter(it) }
+    private val leftAllPass = listOf(556, 441, 341, 225).map { AllPassFilter(it) }
+    private val rightAllPass = listOf(579, 464, 364, 248).map { AllPassFilter(it) }
+
+    // Echo / Delay State (44.1kHz stereo ring buffer, up to 1000ms delay)
+    private val echoBufferSize = 44100
+    private val echoBufferL = DoubleArray(echoBufferSize)
+    private val echoBufferR = DoubleArray(echoBufferSize)
+    private var echoWriteIndex = 0
+    private var prevEchoFilterL = 0.0
+    private var prevEchoFilterR = 0.0
+
     // Mono detection metric (PRD FR-4)
     var correlationMetric = 0.85f
 
@@ -239,6 +312,10 @@ class AudioEngine {
             .build()
 
         audioTrack?.play()
+        try {
+            val params = audioTrack?.playbackParams ?: PlaybackParams()
+            audioTrack?.playbackParams = params.setSpeed(playbackSpeed)
+        } catch (e: Exception) {}
 
         playbackJob = scope.launch(Dispatchers.Default) {
             val pcmBuffer = ShortArray(BUFFER_SIZE * 2)
@@ -299,6 +376,38 @@ class AudioEngine {
             audioTrack?.release()
         } catch (e: Exception) {}
         audioTrack = null
+        resetAllEffects()
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 1.5f)
+        playbackSpeed = clamped
+        try {
+            audioTrack?.let { track ->
+                val params = track.playbackParams ?: PlaybackParams()
+                track.playbackParams = params.setSpeed(clamped)
+            }
+        } catch (e: Exception) {}
+    }
+
+    fun resetReverb() {
+        leftCombs.forEach { it.reset() }
+        rightCombs.forEach { it.reset() }
+        leftAllPass.forEach { it.reset() }
+        rightAllPass.forEach { it.reset() }
+    }
+
+    fun resetEcho() {
+        echoBufferL.fill(0.0)
+        echoBufferR.fill(0.0)
+        echoWriteIndex = 0
+        prevEchoFilterL = 0.0
+        prevEchoFilterR = 0.0
+    }
+
+    fun resetAllEffects() {
+        resetReverb()
+        resetEcho()
     }
 
     fun togglePlayPause(scope: CoroutineScope): Boolean {
@@ -451,11 +560,16 @@ class AudioEngine {
         val (s5L, s5R) = processVirtualizerSpace(s4L, s4R)
 
         // ==========================================
-        // STAGE 6: VOLUME BOOST & LIMITER (PRD 6.6 & FR-5)
+        // STAGE 6: TIME & SPACE FX: ECHO & REVERB
         // ==========================================
-        val (s6L, s6R) = processLoudnessAndLimiter(s5L, s5R)
+        val (s6L, s6R) = processStereoEchoAndReverb(s5L, s5R)
 
-        return Pair(s6L, s6R)
+        // ==========================================
+        // STAGE 7: VOLUME BOOST & LIMITER (PRD 6.6 & FR-5)
+        // ==========================================
+        val (s7L, s7R) = processLoudnessAndLimiter(s6L, s6R)
+
+        return Pair(s7L, s7R)
     }
 
     private fun processDynamicsCompressor(inL: Double, inR: Double): Pair<Double, Double> {
@@ -572,6 +686,80 @@ class AudioEngine {
         }
 
         return Pair(boostedL, boostedR)
+    }
+
+    fun processStereoEchoAndReverb(inL: Double, inR: Double): Pair<Double, Double> {
+        val (echoL, echoR) = processStereoEcho(inL, inR)
+        return processStereoReverb(echoL, echoR)
+    }
+
+    fun processStereoEcho(inL: Double, inR: Double): Pair<Double, Double> {
+        if (echoWet <= 0f) {
+            return Pair(inL, inR)
+        }
+
+        val delaySamples = ((echoTimeMs / 1000.0) * SAMPLE_RATE).toInt().coerceIn(1, echoBufferSize - 1)
+        val readIdx = (echoWriteIndex - delaySamples + echoBufferSize) % echoBufferSize
+
+        val delayedL = echoBufferL[readIdx]
+        val delayedR = echoBufferR[readIdx]
+
+        // 1-pole low-pass filter on feedback repeats (analog tape damping)
+        prevEchoFilterL = delayedL * 0.70 + prevEchoFilterL * 0.30
+        prevEchoFilterR = delayedR * 0.70 + prevEchoFilterR * 0.30
+        if (abs(prevEchoFilterL) < 1e-15) prevEchoFilterL = 0.0
+        if (abs(prevEchoFilterR) < 1e-15) prevEchoFilterR = 0.0
+
+        val feedbackFactor = (echoFeedback / 100.0).coerceIn(0.0, 0.85)
+        val crossfeed = if (echoPingPong) 0.25 else 0.0
+
+        // Ping-pong crossfeed into delay buffers
+        val feedL = inL + (prevEchoFilterL * (1.0 - crossfeed) + prevEchoFilterR * crossfeed) * feedbackFactor
+        val feedR = inR + (prevEchoFilterR * (1.0 - crossfeed) + prevEchoFilterL * crossfeed) * feedbackFactor
+
+        echoBufferL[echoWriteIndex] = if (abs(feedL) < 1e-15) 0.0 else feedL
+        echoBufferR[echoWriteIndex] = if (abs(feedR) < 1e-15) 0.0 else feedR
+        echoWriteIndex = (echoWriteIndex + 1) % echoBufferSize
+
+        val wetFactor = (echoWet / 100.0).coerceIn(0.0, 1.0)
+        val outL = inL * (1.0 - wetFactor * 0.35) + delayedL * (wetFactor * 1.1)
+        val outR = inR * (1.0 - wetFactor * 0.35) + delayedR * (wetFactor * 1.1)
+
+        return Pair(outL, outR)
+    }
+
+    fun processStereoReverb(inL: Double, inR: Double): Pair<Double, Double> {
+        if (reverbWet <= 0f) {
+            return Pair(inL, inR)
+        }
+
+        val feedback = (0.70 + (reverbRoomSize / 100.0) * 0.28).coerceIn(0.70, 0.98)
+        val damping = (0.05 + (reverbDamping / 100.0) * 0.65).coerceIn(0.05, 0.70)
+        val monoIn = (inL + inR) * 0.015
+
+        var outL = 0.0
+        var outR = 0.0
+        for (i in 0 until 8) {
+            outL += leftCombs[i].process(monoIn, feedback, damping)
+            outR += rightCombs[i].process(monoIn, feedback, damping)
+        }
+
+        for (i in 0 until 4) {
+            outL = leftAllPass[i].process(outL, 0.5)
+            outR = rightAllPass[i].process(outR, 0.5)
+        }
+
+        val width = (reverbWidth / 100.0).coerceIn(0.0, 1.0)
+        val wet1 = (1.0 + width) * 0.5
+        val wet2 = (1.0 - width) * 0.5
+        val wetL = outL * wet1 + outR * wet2
+        val wetR = outR * wet1 + outL * wet2
+
+        val wetGain = (reverbWet / 100.0).coerceIn(0.0, 1.0)
+        val finalL = inL * (1.0 - wetGain * 0.4) + wetL * (wetGain * 1.6)
+        val finalR = inR * (1.0 - wetGain * 0.4) + wetR * (wetGain * 1.6)
+
+        return Pair(finalL, finalR)
     }
 
     private fun applyVintageEffects(inL: Double, inR: Double): Pair<Double, Double> {
