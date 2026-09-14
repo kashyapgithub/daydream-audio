@@ -3,7 +3,6 @@ package com.example.integration
 import com.example.audio.AudioEngine
 import com.example.model.PlainBand
 import com.example.model.PresetExportBundle
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -261,35 +260,23 @@ class IntegrationTest {
             isLofiMode = true
         )
 
-        // Serialize to JSON
-        val json = JSONObject().apply {
-            put("name", bundle.name)
-            put("description", bundle.description)
-            put("spacePercent", bundle.spacePercent)
-            put("punchPercent", bundle.punchPercent)
-            put("clarityMacroPercent", bundle.clarityMacroPercent)
-            put("loudnessPercent", bundle.loudnessPercent)
-            put("hissRemovalPercent", bundle.hissRemovalPercent)
-            put("deHumEnabled", bundle.deHumEnabled)
-            put("deCrackleEnabled", bundle.deCrackleEnabled)
-            put("reverbWetPercent", bundle.reverbWetPercent)
-            put("reverbRoomSizePercent", bundle.reverbRoomSizePercent)
-            put("reverbDampingPercent", bundle.reverbDampingPercent)
-            put("echoTimeMs", bundle.echoTimeMs)
-            put("echoFeedbackPercent", bundle.echoFeedbackPercent)
-            put("echoWetPercent", bundle.echoWetPercent)
-            put("playbackSpeed", bundle.playbackSpeed)
-            put("isLofiMode", bundle.isLofiMode)
-        }
+        // Apply bundle to engine
+        engine.reverbWet = bundle.reverbWetPercent
+        engine.reverbRoomSize = bundle.reverbRoomSizePercent
+        engine.reverbDamping = bundle.reverbDampingPercent
+        engine.echoTimeMs = bundle.echoTimeMs
+        engine.echoFeedback = bundle.echoFeedbackPercent
+        engine.echoWet = bundle.echoWetPercent
+        engine.setPlaybackSpeed(bundle.playbackSpeed)
 
-        // Deserialize and assert
-        assertEquals(35f, json.getDouble("reverbWetPercent").toFloat(), 0.001f)
-        assertEquals(80f, json.getDouble("reverbRoomSizePercent").toFloat(), 0.001f)
-        assertEquals(45f, json.getDouble("reverbDampingPercent").toFloat(), 0.001f)
-        assertEquals(280, json.getInt("echoTimeMs"))
-        assertEquals(40f, json.getDouble("echoFeedbackPercent").toFloat(), 0.001f)
-        assertEquals(25f, json.getDouble("echoWetPercent").toFloat(), 0.001f)
-        assertEquals(0.85f, json.getDouble("playbackSpeed").toFloat(), 0.001f)
-        assertTrue(json.getBoolean("isLofiMode"))
+        assertEquals("Lofi Chillroom", bundle.name)
+        assertEquals(35f, engine.reverbWet, 0.001f)
+        assertEquals(80f, engine.reverbRoomSize, 0.001f)
+        assertEquals(45f, engine.reverbDamping, 0.001f)
+        assertEquals(280, engine.echoTimeMs)
+        assertEquals(40f, engine.echoFeedback, 0.001f)
+        assertEquals(25f, engine.echoWet, 0.001f)
+        assertEquals(0.85f, engine.playbackSpeed, 0.001f)
+        assertTrue(bundle.isLofiMode)
     }
 }
