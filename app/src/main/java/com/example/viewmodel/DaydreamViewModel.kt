@@ -837,6 +837,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.compRatio = s.compRatio
         audioEngine.compAttackMs = s.compAttackMs
         audioEngine.compReleaseMs = s.compReleaseMs
+        audioEngine.limiterCeilingDb = s.limiterCeilingDb
     }
 
     override fun onCleared() {

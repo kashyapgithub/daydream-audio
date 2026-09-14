@@ -222,9 +222,12 @@ class SystemAudioEffectManager private constructor() {
     }
 
     private fun findBestGainForFrequency(freqHz: Int): Float {
-        // If parametric gain is explicitly set for this Hz, use it
-        if (currentParametricGains.containsKey(freqHz)) {
-            return currentParametricGains[freqHz] ?: 0f
+        // If parametric mode has active bands, find the closest matching frequency
+        if (currentParametricGains.isNotEmpty()) {
+            val closest = currentParametricGains.minByOrNull { kotlin.math.abs(it.key - freqHz) }
+            if (closest != null) {
+                return closest.value
+            }
         }
         // Otherwise interpolate from 5 plain-language bands
         return when {
@@ -253,13 +256,14 @@ class SystemAudioEffectManager private constructor() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val dynamics = holder.dynamicsProcessing ?: return
             try {
-                // Adjust limiter or MBC parameters matching punch
+                // Adjust limiter or MBC parameters matching punch (PRD 6.8 & 8.3)
                 val limiter = dynamics.getLimiterByChannelIndex(0)
                 if (limiter != null) {
-                    // Soft-knee ratio increase with punch
-                    limiter.ratio = 1f + (currentPunchPercent / 100f) * 3f
-                    limiter.threshold = -18f + (currentPunchPercent / 100f) * 6f
-                    limiter.postGain = (currentPunchPercent / 100f) * 3f // makeup gain
+                    val pNorm = (currentPunchPercent / 100f).coerceIn(0f, 1f)
+                    // Ratio 1.5:1 up to 4.0:1, threshold -12dB down to -24dB, and automatic makeup gain
+                    limiter.ratio = 1.5f + pNorm * 2.5f
+                    limiter.threshold = -12f - pNorm * 12f
+                    limiter.postGain = pNorm * 4f
                     dynamics.setLimiterByChannelIndex(0, limiter)
                     dynamics.setLimiterByChannelIndex(1, limiter)
                 }

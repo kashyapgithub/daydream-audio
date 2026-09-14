@@ -75,11 +75,12 @@ class AudioEngine {
     var deCrackleEnabled: Boolean = false
     var spatialRoomType: String = "Natural" // "Natural", "Intimate Studio", "Concert Hall", "Cathedral" (PRD 6.7a)
 
-    // Advanced Compressor Parameters
+    // Advanced Compressor & Limiter Parameters (PRD 8.3)
     var compThresholdDb: Float = -18f
     var compRatio: Float = 2.5f
     var compAttackMs: Float = 20f
     var compReleaseMs: Float = 150f
+    var limiterCeilingDb: Float = -0.5f
 
     // Vintage-ify mode (PRD 6.13)
     var vintageMode: Boolean = false
@@ -130,12 +131,19 @@ class AudioEngine {
     private var phase = 0.0
     private var lfoPhase = 0.0
     private var noiseFloorEstimate = 0.02
+    private var hissDetectorEnvelope = 0.0
+
+    // Vintage Wow & Flutter Fractional Delay Line (PRD 6.13 & 8.3)
+    private val vintageDelaySize = 2048
+    private val vintageDelayL = DoubleArray(vintageDelaySize)
+    private val vintageDelayR = DoubleArray(vintageDelaySize)
+    private var vintageWriteIndex = 0
 
     // Click/Crackle state registers
     private var prevSampleL = 0.0
     private var prevSampleR = 0.0
 
-    // Biquad state register
+    // Biquad state register with anti-denormal and NaN/Inf isolation
     class BiquadState {
         var x1L = 0.0; var x2L = 0.0; var y1L = 0.0; var y2L = 0.0
         var x1R = 0.0; var x2R = 0.0; var y1R = 0.0; var y2R = 0.0
@@ -143,15 +151,23 @@ class AudioEngine {
 
         fun processL(input: Double): Double {
             val out = b0 * input + b1 * x1L + b2 * x2L - a1 * y1L - a2 * y2L
+            if (out.isNaN() || out.isInfinite()) {
+                x1L = 0.0; x2L = 0.0; y1L = 0.0; y2L = 0.0
+                return input
+            }
             x2L = x1L; x1L = input
-            y2L = y1L; y1L = out
+            y2L = y1L; y1L = if (abs(out) < 1e-18) 0.0 else out
             return out
         }
 
         fun processR(input: Double): Double {
             val out = b0 * input + b1 * x1R + b2 * x2R - a1 * y1R - a2 * y2R
+            if (out.isNaN() || out.isInfinite()) {
+                x1R = 0.0; x2R = 0.0; y1R = 0.0; y2R = 0.0
+                return input
+            }
             x2R = x1R; x1R = input
-            y2R = y1R; y1R = out
+            y2R = y1R; y1R = if (abs(out) < 1e-18) 0.0 else out
             return out
         }
     }
@@ -256,9 +272,10 @@ class AudioEngine {
                         var s1R = rawR
 
                         if (vintageMode) {
-                            // Reverse Time Machine: Synthesize analog noise + warble
-                            s1L = applyVintageEffects(s1L)
-                            s1R = applyVintageEffects(s1R)
+                            // Reverse Time Machine: Synthesize analog noise + warble with fractional delay line
+                            val (warbledL, warbledR) = applyVintageEffects(s1L, s1R)
+                            s1L = warbledL
+                            s1R = warbledR
                         } else {
                             // 1a. Multi-Harmonic De-Hum (50/60Hz + 2 harmonics)
                             if (deHumEnabled) {
@@ -285,20 +302,29 @@ class AudioEngine {
 
                             // 1c. Adaptive High-Shelf + Spectral Noise Gate (PRD 8.3)
                             if (hissRemoval > 0f) {
-                                // Apply high-shelf attenuation above 5kHz
+                                // Apply high-shelf attenuation above 4.8kHz
                                 s1L = hissHighShelf.processL(s1L)
                                 s1R = hissHighShelf.processR(s1R)
 
-                                // Track noise floor during quieter sections
+                                // Leaky-integrator envelope follower (1ms attack, 30ms release) avoids zero-crossing distortion
                                 val instAmp = (abs(s1L) + abs(s1R)) * 0.5
-                                if (instAmp < 0.08) {
-                                    noiseFloorEstimate = noiseFloorEstimate * 0.999 + instAmp * 0.001
+                                val attackCoef = 0.045
+                                val releaseCoef = 0.00075
+                                hissDetectorEnvelope += if (instAmp > hissDetectorEnvelope) {
+                                    attackCoef * (instAmp - hissDetectorEnvelope)
+                                } else {
+                                    releaseCoef * (instAmp - hissDetectorEnvelope)
+                                }
+
+                                // Track noise floor during quieter sections
+                                if (hissDetectorEnvelope < 0.08) {
+                                    noiseFloorEstimate = noiseFloorEstimate * 0.9995 + hissDetectorEnvelope * 0.0005
                                 }
 
                                 // Soft gate when signal falls below estimated noise floor
-                                val gateThreshold = noiseFloorEstimate * (1.0 + (hissRemoval / 100.0) * 2.0)
-                                if (instAmp < gateThreshold) {
-                                    val gateFactor = (instAmp / gateThreshold).coerceIn(0.25, 1.0)
+                                val gateThreshold = noiseFloorEstimate * (1.0 + (hissRemoval / 100.0) * 2.5)
+                                if (hissDetectorEnvelope < gateThreshold) {
+                                    val gateFactor = (hissDetectorEnvelope / gateThreshold).coerceIn(0.25, 1.0)
                                     s1L *= gateFactor
                                     s1R *= gateFactor
                                 }
@@ -335,12 +361,12 @@ class AudioEngine {
                         if (clarityMacroAmount > 0f) {
                             val factor = (clarityMacroAmount / 100.0)
 
-                            // Split high band above 3.5kHz
+                            // 3.5kHz Linkwitz-Riley crossover split
                             val lowL = crossoverLow.processL(s2L)
-                            val highL = s2L - lowL
+                            val highL = crossoverHigh.processL(s2L)
 
                             val lowR = crossoverLow.processR(s2R)
-                            val highR = s2R - lowR
+                            val highR = crossoverHigh.processR(s2R)
 
                             // Add gentle 2nd & 3rd order harmonic saturation to high-mid only
                             val excitedHighL = highL + factor * 0.18 * tanh(highL * 1.6)
@@ -428,32 +454,54 @@ class AudioEngine {
     fun isCurrentlyPlaying(): Boolean = isPlaying.get()
 
     private fun processDynamicsCompressor(inL: Double, inR: Double): Pair<Double, Double> {
-        val peakAmp = max(abs(inL), abs(inR))
+        // RMS-based power detector (PRD 8.3: RMS, not pure peak)
+        val power = (inL * inL + inR * inR) * 0.5
 
-        // Time constants from parameters (PRD 8.3)
-        val attackCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (compAttackMs / 1000.0)))
-        val releaseCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (compReleaseMs / 1000.0)))
+        val ratioVal: Double
+        val threshDb: Double
+        val attackMs: Double
+        val releaseMs: Double
 
-        compressorEnvelope += if (peakAmp > compressorEnvelope) {
-            attackCoef * (peakAmp - compressorEnvelope)
+        if (isAdvancedParametricMode) {
+            ratioVal = compRatio.toDouble()
+            threshDb = compThresholdDb.toDouble()
+            attackMs = compAttackMs.toDouble()
+            releaseMs = compReleaseMs.toDouble()
         } else {
-            releaseCoef * (peakAmp - compressorEnvelope)
+            // Simple Mode Punch slider mapping (PRD 8.3: ratio 1.5..4.0, threshold -12..-24dB, attack 30..10ms, release 100..250ms)
+            val pNorm = (punchAmount / 100.0).coerceIn(0.0, 1.0)
+            ratioVal = 1.5 + pNorm * 2.5
+            threshDb = -12.0 - pNorm * 12.0
+            attackMs = 30.0 - pNorm * 20.0
+            releaseMs = 100.0 + pNorm * 150.0
         }
 
+        // Time constants from parameters (PRD 8.3)
+        val attackCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (attackMs / 1000.0)))
+        val releaseCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (releaseMs / 1000.0)))
+
+        compressorEnvelope += if (power > compressorEnvelope) {
+            attackCoef * (power - compressorEnvelope)
+        } else {
+            releaseCoef * (power - compressorEnvelope)
+        }
+
+        val rmsAmp = sqrt(max(1e-12, compressorEnvelope))
+
         // Linear threshold
-        val thresholdLinear = 10.0.pow(compThresholdDb / 20.0)
-        val ratio = max(1.0, compRatio.toDouble())
+        val thresholdLinear = 10.0.pow(threshDb / 20.0)
+        val ratio = max(1.0, ratioVal)
         var gainReduction = 1.0
 
         // Soft-knee compression calculation
-        if (compressorEnvelope > thresholdLinear) {
-            val overRatio = compressorEnvelope / thresholdLinear
+        if (rmsAmp > thresholdLinear) {
+            val overRatio = rmsAmp / thresholdLinear
             val compressedOver = overRatio.pow(1.0 / ratio)
-            gainReduction = (thresholdLinear * compressedOver) / compressorEnvelope
+            gainReduction = (thresholdLinear * compressedOver) / rmsAmp
         }
 
         // Automatic makeup gain
-        val makeupLinear = 10.0.pow((-compThresholdDb * 0.35) / 20.0)
+        val makeupLinear = 10.0.pow((-threshDb * 0.35) / 20.0)
         val totalGain = gainReduction * makeupLinear
 
         return Pair(inL * totalGain, inR * totalGain)
@@ -491,9 +539,9 @@ class AudioEngine {
         val roomL = delayBufferL[roomReadIndex] * reflectionCoeff * widthFactor
         val roomR = delayBufferR[roomReadIndex] * reflectionCoeff * widthFactor
 
-        // Transaural crossfeed decorrelation + early room simulation
-        val outL = inL + (delayedR - inR) * (widthFactor * 0.45) + roomL
-        val outR = inR + (delayedL - inL) * (widthFactor * 0.45) + roomR
+        // Transaural crossfeed decorrelation + binaural contralateral room simulation
+        val outL = inL + (delayedR - inR) * (widthFactor * 0.45) + roomR
+        val outR = inR + (delayedL - inL) * (widthFactor * 0.45) + roomL
 
         return Pair(outL, outR)
     }
@@ -504,8 +552,8 @@ class AudioEngine {
         var boostedL = inL * boostLinear
         var boostedR = inR * boostLinear
 
-        // True-Peak Soft Brickwall Limiter (PRD 6.6 & FR-5)
-        val ceiling = 0.95
+        // True-Peak Soft Brickwall Limiter (PRD 6.6, 8.3 & FR-5)
+        val ceiling = 10.0.pow(limiterCeilingDb / 20.0).coerceIn(0.70, 0.98)
         if (abs(boostedL) > ceiling) {
             val sign = if (boostedL >= 0) 1.0 else -1.0
             boostedL = sign * (ceiling + (1.0 - ceiling) * tanh((abs(boostedL) - ceiling) / (1.0 - ceiling)))
@@ -518,16 +566,36 @@ class AudioEngine {
         return Pair(boostedL, boostedR)
     }
 
-    private fun applyVintageEffects(input: Double): Double {
+    private fun applyVintageEffects(inL: Double, inR: Double): Pair<Double, Double> {
+        // Store into dedicated vintage delay buffer for pitch modulation
+        vintageDelayL[vintageWriteIndex] = inL
+        vintageDelayR[vintageWriteIndex] = inR
+        vintageWriteIndex = (vintageWriteIndex + 1) % vintageDelaySize
+
+        // LFO rates for wow (~1.2Hz) and flutter (~6.8Hz)
         lfoPhase += 1.2 * (2.0 * PI / SAMPLE_RATE)
-        val wow = sin(lfoPhase) * (wowFlutterDepth / 100.0) * 0.03
-        val flutter = sin(lfoPhase * 5.7) * (wowFlutterDepth / 100.0) * 0.01
+        if (lfoPhase > 2.0 * PI * 1000) lfoPhase -= 2.0 * PI * 1000
 
-        val noiseAmp = vintageNoiseLevel / 100.0 * 0.12
-        val tapeHiss = (Random.nextDouble() - 0.5) * noiseAmp
-        val vinylPop = if (Random.nextDouble() < (vintageNoiseLevel / 12000.0)) (Random.nextDouble() - 0.5) * 0.5 else 0.0
+        val wowSamples = sin(lfoPhase) * (wowFlutterDepth / 100.0) * 14.0
+        val flutterSamples = sin(lfoPhase * 5.7) * (wowFlutterDepth / 100.0) * 3.5
+        val totalDelay = 100.0 + wowSamples + flutterSamples
 
-        return input * (1.0 + wow + flutter) + tapeHiss + vinylPop
+        val intDelay = totalDelay.toInt()
+        val frac = totalDelay - intDelay
+
+        // Linear interpolation from delay line creates authentic Doppler pitch warble (PRD 6.13 & 8.3)
+        val idx0 = (vintageWriteIndex - intDelay + vintageDelaySize) % vintageDelaySize
+        val idx1 = (vintageWriteIndex - intDelay - 1 + vintageDelaySize) % vintageDelaySize
+
+        val warbledL = (1.0 - frac) * vintageDelayL[idx0] + frac * vintageDelayL[idx1]
+        val warbledR = (1.0 - frac) * vintageDelayR[idx0] + frac * vintageDelayR[idx1]
+
+        val noiseAmp = (vintageNoiseLevel / 100.0) * 0.08
+        val tapeHissL = (Random.nextDouble() - 0.5) * noiseAmp
+        val tapeHissR = (Random.nextDouble() - 0.5) * noiseAmp
+        val vinylPop = if (Random.nextDouble() < (vintageNoiseLevel / 15000.0)) (Random.nextDouble() - 0.5) * 0.45 else 0.0
+
+        return Pair(warbledL + tapeHissL + vinylPop, warbledR + tapeHissR + vinylPop)
     }
 
     private fun synthesizeSourceSample(track: DemoTrack): Pair<Double, Double> {
@@ -601,16 +669,23 @@ class AudioEngine {
         val hissCutDb = -(hissRemoval / 100.0 * 20.0) // 0 to -20dB cut
         calculateCookbookBiquad(hissHighShelf, 4800.0, hissCutDb, 0.7, isLowShelf = false, isHighShelf = true)
 
-        // 5. Clarity 3-Band Crossover Split (3.5kHz 2nd-order Linkwitz-Riley low pass)
+        // 5. Clarity 3-Band Crossover Split (3.5kHz 2nd-order Linkwitz-Riley low pass & high pass)
         val wC = 2.0 * PI * 3500.0 / SAMPLE_RATE
         val alphaC = sin(wC) / (2.0 * 0.707)
         val cosWC = cos(wC)
         val a0C = 1.0 + alphaC
+
         crossoverLow.b0 = ((1.0 - cosWC) / 2.0) / a0C
         crossoverLow.b1 = (1.0 - cosWC) / a0C
         crossoverLow.b2 = ((1.0 - cosWC) / 2.0) / a0C
         crossoverLow.a1 = (-2.0 * cosWC) / a0C
         crossoverLow.a2 = (1.0 - alphaC) / a0C
+
+        crossoverHigh.b0 = ((1.0 + cosWC) / 2.0) / a0C
+        crossoverHigh.b1 = (-(1.0 + cosWC)) / a0C
+        crossoverHigh.b2 = ((1.0 + cosWC) / 2.0) / a0C
+        crossoverHigh.a1 = (-2.0 * cosWC) / a0C
+        crossoverHigh.a2 = (1.0 - alphaC) / a0C
     }
 
     private fun calculateCookbookBiquad(
