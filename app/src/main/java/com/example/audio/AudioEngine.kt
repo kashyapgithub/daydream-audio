@@ -86,14 +86,16 @@ class AudioEngine {
 
     // Reverb Parameters (Freeverb 8-Comb + 4-AllPass Network)
     var reverbWet: Float = 0f // 0 to 100%
-    var reverbRoomSize: Float = 75f // 0 to 100%
+    var reverbRoomSize: Float = 75f // 0 to 100% - fine continuous control within the selected RoomSize category
     var reverbDamping: Float = 35f // 0 to 100%
     var reverbWidth: Float = 100f // 0 to 100%
+    var roomSize: RoomSize = RoomSize.LARGE_HALL // discrete character preset (PRD 6.15)
+    var wallMaterial: WallMaterial = WallMaterial.PLASTER // discrete character preset (PRD 6.15)
 
     // Echo / Delay Parameters (Stereo Ping-Pong with Tape Damping)
     var echoWet: Float = 0f // 0 to 100%
-    var echoTimeMs: Int = 320 // 50 to 1000 ms
-    var echoFeedback: Float = 30f // 0 to 80%
+    var echoTimeMs: Int = 320 // 50 to 2000 ms - widened range for canyon/dub-style long delays (PRD 6.15)
+    var echoFeedback: Float = 30f // 0 to 92% - widened for near-self-oscillating trailing echoes
     var echoPingPong: Boolean = true
 
     // Playback Tempo (0.5x to 1.5x, API 23+ PlaybackParams time-stretching)
@@ -231,24 +233,32 @@ class AudioEngine {
     }
 
     // Schroeder / Freeverb Low-Pass Feedback Comb Filter with anti-denormal flush
-    class CombFilter(val size: Int) {
-        private val buffer = DoubleArray(size)
-        private var index = 0
+    class CombFilter(val maxSize: Int) {
+        private val buffer = DoubleArray(maxSize)
+        private var writeIndex = 0
         var filterStore = 0.0
+        // Adjustable look-back distance, independent of physical buffer capacity.
+        // This is what makes Room Size a real early-reflection/delay-length change,
+        // not just a feedback-decay knob - a small closet and a cathedral don't just
+        // ring for different lengths of time, their reflections arrive at different
+        // times too.
+        var activeLength = maxSize
 
         fun process(input: Double, feedback: Double, damping: Double): Double {
-            val output = buffer[index]
+            val delay = activeLength.coerceIn(8, maxSize)
+            val readIndex = (writeIndex - delay + maxSize) % maxSize
+            val output = buffer[readIndex]
             filterStore = output * (1.0 - damping) + filterStore * damping
             if (abs(filterStore) < 1e-15) filterStore = 0.0
             val next = input + filterStore * feedback
-            buffer[index] = if (abs(next) < 1e-15) 0.0 else next
-            index = (index + 1) % size
+            buffer[writeIndex] = if (abs(next) < 1e-15) 0.0 else next
+            writeIndex = (writeIndex + 1) % maxSize
             return output
         }
 
         fun reset() {
             buffer.fill(0.0)
-            index = 0
+            writeIndex = 0
             filterStore = 0.0
         }
     }
@@ -271,6 +281,44 @@ class AudioEngine {
             buffer.fill(0.0)
             index = 0
         }
+    }
+
+    // One-pole spectral tilt: simulates how a surface material colors reflections.
+    // Positive tilt = darker/warmer (absorptive materials: wood, carpet).
+    // Negative tilt = brighter (reflective materials: tile, concrete, glass).
+    // This is a deliberately simple, cheap filter - a real material's absorption
+    // curve is far more complex, but a single-pole tilt gives an audibly distinct,
+    // correctly-directional character difference at negligible CPU cost.
+    class ToneTilt {
+        private var state = 0.0
+        fun process(input: Double, tilt: Double): Double {
+            val cutoff = (0.15 + abs(tilt) * 0.35).coerceIn(0.05, 0.5)
+            state += cutoff * (input - state)
+            if (abs(state) < 1e-15) state = 0.0
+            return if (tilt >= 0.0) {
+                input * (1.0 - tilt) + state * tilt
+            } else {
+                input + (input - state) * (-tilt) * 0.8
+            }
+        }
+        fun reset() { state = 0.0 }
+    }
+
+    enum class RoomSize(val label: String, val lengthScale: Double, val feedbackBias: Double, val dampingBias: Double) {
+        SMALL_ROOM("Small Room", 0.45, -0.10, 0.05),
+        MEDIUM_HALL("Medium Hall", 0.68, -0.03, 0.0),
+        LARGE_HALL("Large Hall", 0.88, 0.02, -0.03),
+        CATHEDRAL("Cathedral", 1.0, 0.06, -0.08),
+        CAVERN("Cavern", 1.3, 0.10, -0.12) // beyond canonical Freeverb size - the "bigger range" ask
+    }
+
+    enum class WallMaterial(val label: String, val toneTilt: Double, val dampingBias: Double, val feedbackBias: Double) {
+        WOOD("Wood", 0.35, 0.08, 0.0),
+        PLASTER("Plaster / Drywall", 0.10, 0.0, 0.0),
+        CONCRETE("Concrete", -0.25, -0.05, 0.02),
+        TILE_STONE("Tile / Stone", -0.35, -0.08, 0.03),
+        CARPET_CURTAINS("Carpet & Curtains", 0.55, 0.18, -0.04),
+        GLASS("Glass", -0.45, -0.10, 0.04)
     }
 
     // 5 Simple Mode EQ Biquads
@@ -308,14 +356,21 @@ class AudioEngine {
     private val delayBufferR = DoubleArray(delayBufferSize)
     private var delayWriteIndex = 0
 
-    // Reverb Engine State (Standard Freeverb 44.1kHz delay sizes with +23 right stereo spread)
-    private val leftCombs = listOf(1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617).map { CombFilter(it) }
-    private val rightCombs = listOf(1139, 1211, 1300, 1379, 1445, 1514, 1580, 1640).map { CombFilter(it) }
+    // Reverb Engine State (Standard Freeverb 44.1kHz delay sizes with +23 right stereo spread).
+    // Buffers are allocated 30% larger than canonical tunings so the Cavern room-size
+    // preset (lengthScale up to 1.3) has physical headroom - activeLength (set per
+    // RoomSize) controls what's actually used at runtime.
+    private val combBaseTunings = listOf(1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617)
+    private val combBaseTuningsR = listOf(1139, 1211, 1300, 1379, 1445, 1514, 1580, 1640)
+    private val leftCombs = combBaseTunings.map { CombFilter((it * 1.3).toInt()) }
+    private val rightCombs = combBaseTuningsR.map { CombFilter((it * 1.3).toInt()) }
     private val leftAllPass = listOf(556, 441, 341, 225).map { AllPassFilter(it) }
     private val rightAllPass = listOf(579, 464, 364, 248).map { AllPassFilter(it) }
+    private val reverbToneTiltL = ToneTilt()
+    private val reverbToneTiltR = ToneTilt()
 
-    // Echo / Delay State (44.1kHz stereo ring buffer, up to 1000ms delay)
-    private val echoBufferSize = 44100
+    // Echo / Delay State (44.1kHz stereo ring buffer, up to 2000ms delay - PRD 6.15)
+    private val echoBufferSize = 88200
     private val echoBufferL = DoubleArray(echoBufferSize)
     private val echoBufferR = DoubleArray(echoBufferSize)
     private var echoWriteIndex = 0
@@ -437,6 +492,8 @@ class AudioEngine {
         rightCombs.forEach { it.reset() }
         leftAllPass.forEach { it.reset() }
         rightAllPass.forEach { it.reset() }
+        reverbToneTiltL.reset()
+        reverbToneTiltR.reset()
     }
 
     fun resetEcho() {
@@ -753,7 +810,7 @@ class AudioEngine {
         if (abs(prevEchoFilterL) < 1e-15) prevEchoFilterL = 0.0
         if (abs(prevEchoFilterR) < 1e-15) prevEchoFilterR = 0.0
 
-        val feedbackFactor = (echoFeedback / 100.0).coerceIn(0.0, 0.85)
+        val feedbackFactor = (echoFeedback / 100.0).coerceIn(0.0, 0.92)
         val crossfeed = if (echoPingPong) 0.25 else 0.0
 
         // Ping-pong crossfeed into delay buffers
@@ -769,8 +826,8 @@ class AudioEngine {
             return Pair(inL, inR)
         }
 
-        val outL = inL * (1.0 - wetFactor * 0.35) + delayedL * (wetFactor * 1.1)
-        val outR = inR * (1.0 - wetFactor * 0.35) + delayedR * (wetFactor * 1.1)
+        val outL = inL * (1.0 - wetFactor * 0.80) + delayedL * (wetFactor * 1.8)
+        val outR = inR * (1.0 - wetFactor * 0.80) + delayedR * (wetFactor * 1.8)
 
         return Pair(outL, outR)
     }
@@ -781,9 +838,21 @@ class AudioEngine {
             return Pair(inL, inR)
         }
 
-        val feedback = (0.70 + (reverbRoomSize / 100.0) * 0.28).coerceIn(0.70, 0.98)
-        val damping = (0.05 + (reverbDamping / 100.0) * 0.65).coerceIn(0.05, 0.70)
-        val monoIn = (inL + inR) * 0.02
+        // Base feedback/damping from the continuous slider, then biased by the
+        // selected RoomSize and WallMaterial presets. Room Size changes both the
+        // decay character (feedback/damping) AND the physical comb delay length
+        // (activeLength below) - a small room and a cathedral don't just ring for
+        // different durations, their early reflections arrive at different times.
+        val feedback = (0.55 + (reverbRoomSize / 100.0) * 0.30 + roomSize.feedbackBias + wallMaterial.feedbackBias)
+            .coerceIn(0.35, 0.985)
+        val damping = (0.05 + (reverbDamping / 100.0) * 0.55 + roomSize.dampingBias + wallMaterial.dampingBias)
+            .coerceIn(0.02, 0.85)
+        val monoIn = (inL + inR) * 0.035 // fuller body feed into the comb network than the original 0.02
+
+        for (i in leftCombs.indices) {
+            leftCombs[i].activeLength = (combBaseTunings[i] * roomSize.lengthScale).toInt()
+            rightCombs[i].activeLength = (combBaseTuningsR[i] * roomSize.lengthScale).toInt()
+        }
 
         var outL = 0.0
         var outR = 0.0
@@ -797,14 +866,25 @@ class AudioEngine {
             outR = rightAllPass[i].process(outR, 0.5)
         }
 
+        // Wall material spectral coloration - applied after the diffusion network,
+        // before stereo width mixing, so it colors the whole tail rather than each
+        // individual comb's feedback path (cheaper, and audibly equivalent for a
+        // single-pole tilt of this kind).
+        outL = reverbToneTiltL.process(outL, wallMaterial.toneTilt)
+        outR = reverbToneTiltR.process(outR, wallMaterial.toneTilt)
+
         val width = (reverbWidth / 100.0).coerceIn(0.0, 1.0)
         val wet1 = (1.0 + width) * 0.5
         val wet2 = (1.0 - width) * 0.5
         val wetL = outL * wet1 + outR * wet2
         val wetR = outR * wet1 + outL * wet2
 
-        val finalL = inL * (1.0 - wetGain * 0.35) + wetL * (wetGain * 1.4)
-        val finalR = inR * (1.0 - wetGain * 0.35) + wetR * (wetGain * 1.4)
+        // Widened intensity range: previous version could never exceed a 65%
+        // dry / 1.4x wet blend even at 100% wet, which is why the effect felt
+        // minimal regardless of slider position. Now 100% wet nearly fully
+        // replaces the dry signal for genuinely huge, dominant reverb character.
+        val finalL = inL * (1.0 - wetGain * 0.85) + wetL * (wetGain * 2.2)
+        val finalR = inR * (1.0 - wetGain * 0.85) + wetR * (wetGain * 2.2)
 
         return Pair(finalL, finalR)
     }

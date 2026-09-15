@@ -3,6 +3,8 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -348,6 +350,78 @@ fun AdvancedModeScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    // Room Size character preset (PRD 6.15) - changes actual comb
+                    // delay length, not just decay time, so each size feels
+                    // structurally distinct, not just "longer tail"
+                    Text(
+                        text = "Room Size",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = 6.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        com.example.audio.AudioEngine.RoomSize.values().forEach { size ->
+                            val selected = uiState.roomSize == size
+                            Box(
+                                modifier = Modifier
+                                    .clip(GlassTokens.radiusPill)
+                                    .background(if (selected) GlassTokens.AccentStart else GlassTokens.RaisedGlassFill)
+                                    .clickable { viewModel.setRoomSize(size) }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = size.label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) Color.White else GlassTokens.TextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // Wall Material character preset (PRD 6.15) - colors the
+                    // reflections spectrally (bright/reflective vs warm/absorptive)
+                    Text(
+                        text = "Wall Material",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = 6.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        com.example.audio.AudioEngine.WallMaterial.values().forEach { material ->
+                            val selected = uiState.wallMaterial == material
+                            Box(
+                                modifier = Modifier
+                                    .clip(GlassTokens.radiusPill)
+                                    .background(if (selected) GlassTokens.AccentStart else GlassTokens.RaisedGlassFill)
+                                    .clickable { viewModel.setWallMaterial(material) }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = material.label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) Color.White else GlassTokens.TextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     // Reverb Controls
                     LiquidSlider(
                         title = "Reverb Wet Mix",
@@ -355,18 +429,18 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setReverbWet(it) },
                         valueRange = 0f..100f,
                         unit = "%",
-                        technicalValue = "Wet/Dry Blend",
+                        technicalValue = "Wet/Dry Blend (up to 2.2x wet gain at max)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )
 
                     LiquidSlider(
-                        title = "Reverb Room Size",
+                        title = "Reverb Room Size (Fine Tune)",
                         value = uiState.reverbRoomSizePercent,
                         onValueChange = { viewModel.setReverbRoomSize(it) },
                         valueRange = 10f..100f,
                         unit = "%",
-                        technicalValue = "Comb Feedback 0.70..0.98",
+                        technicalValue = "Comb Feedback 0.35..0.985 (biased by Room Size + Wall Material above)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )
@@ -400,9 +474,9 @@ fun AdvancedModeScreen(
                         title = "Echo Delay Time",
                         value = uiState.echoTimeMs.toFloat(),
                         onValueChange = { viewModel.setEchoTimeMs(it.toInt()) },
-                        valueRange = 50f..1000f,
+                        valueRange = 50f..2000f,
                         unit = "ms",
-                        technicalValue = "${uiState.echoTimeMs}ms (delay buffer)",
+                        technicalValue = "${uiState.echoTimeMs}ms (delay buffer, up to 2s for canyon/dub-style delays)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )
@@ -411,9 +485,9 @@ fun AdvancedModeScreen(
                         title = "Echo Feedback (Repeats)",
                         value = uiState.echoFeedbackPercent,
                         onValueChange = { viewModel.setEchoFeedback(it) },
-                        valueRange = 0f..80f,
+                        valueRange = 0f..92f,
                         unit = "%",
-                        technicalValue = "Crossfeed Loop Gain",
+                        technicalValue = "Crossfeed Loop Gain (near-self-oscillating at max)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )

@@ -230,6 +230,16 @@ This is the idea that reframes what the app *is*, not just what it does: **every
 - **Engineering note:** this depends on 6.13 (Vintage-ify) and 22.7 (Sonic Glass) both existing first, so it should be sequenced after those, not built in parallel — it's a packaging/export layer on top of features that need to be stable first.
 - This is the feature most likely to make the app *spread* rather than just be *used* — worth treating as a genuine growth lever in prioritization, not a nice-to-have polish item.
 
+### 6.15 Room Character — Reverb & Echo (implemented ahead of this PRD section; documented retroactively)
+
+This subsystem was built during implementation as a creative time/space effects layer beyond the original P0/P1 scope, using a genuine Freeverb-derived 8-comb/4-allpass reverb network plus a stereo ping-pong echo with tape-style feedback damping. Real-device testing found the initial implementation's *range* too narrow — audible but subtle regardless of slider position — so it was revised as follows. Documenting the corrected design here so future changes don't regress it:
+
+- **Room Size (discrete character preset, not just a continuous slider):** Small Room, Medium Hall, Large Hall, Cathedral, Cavern. Critically, this changes the **actual comb delay-line length**, not just feedback/decay time — a genuinely different physical space has different early-reflection timing, not just a different tail length. Implemented via a resizable ring-buffer look-back distance (see 8.3 addendum) rather than fixed-size delay lines, so the effective delay can scale from ~45% (tight small room) to 130% (Cavern — deliberately beyond the canonical Freeverb "Large Hall" tuning, since a fixed reference point felt too capped for what people expect from a "huge" setting).
+- **Wall Material (discrete character preset):** Wood, Plaster/Drywall, Concrete, Tile/Stone, Carpet & Curtains, Glass. Colors the reflections spectrally — absorptive materials (wood, carpet) darken/warm the tail and die out faster; reflective materials (concrete, tile, glass) stay bright and ring longer. Implemented as a one-pole spectral tilt filter (see 8.3 addendum) applied post-diffusion-network — a deliberately cheap approximation of real acoustic absorption curves, chosen because it's audibly distinct and correctly-directional at negligible CPU cost, not because it's acoustically precise.
+- **Widened intensity range (the actual root-cause fix):** the original wet/dry blend math could never exceed roughly a 65%-dry/1.4x-wet blend even at 100% wet — mathematically present but perceptually minimal. Revised so 100% wet mix can now nearly fully replace the dry signal (dry attenuated to ~15%, wet boosted up to 2.2x for reverb, ~1.8x for echo), while low settings remain tastefully subtle. This is the change that actually addresses "why does this feel so minimal regardless of what I set it to" — a real-device usability finding, not a cosmetic tweak.
+- **Widened echo range:** delay time extended from a 1000ms ceiling to 2000ms (canyon/dub-style long delays), feedback ceiling raised from 80% to 92% (near-self-oscillating trailing echoes, still numerically stable).
+- Both Room Size and Wall Material are independent of the existing continuous Reverb Room Size / Damping sliders (6.x) — the discrete presets set a baseline character, the continuous sliders fine-tune within it. Persisted in preset export/import alongside the other reverb/echo parameters.
+
 ---
 
 ### Principles
@@ -311,6 +321,11 @@ Section 8.1 specified *order*. This specifies *what each stage actually is* — 
 **Loudness / Volume Boost (6.6) — reference standard:**
 - Use **ITU-R BS.1770 (LUFS)** as the loudness measurement standard for any normalization or "how loud is this" internal logic, rather than simple peak or RMS metering — this is the modern industry standard (used by Spotify/YouTube/broadcast loudness normalization) and keeps the app's internal loudness math consistent with what streaming platforms already do to source audio.
 - **True-peak limiting** (oversampled peak detection, not sample-peak) on the final limiter stage — inter-sample peaks that a naive sample-peak limiter would miss are a common source of audible clipping-like distortion after aggressive processing chains like this one.
+
+**Reverb / Echo — Room Size & Wall Material (6.15 addendum):**
+- **Variable room size via resizable ring-buffer look-back, not fixed delay lines:** each comb filter allocates its buffer at ~130% of its canonical Freeverb tuning length (to leave headroom for the Cavern preset), but reads from a variable look-back distance (`activeLength`) rather than the full buffer — this is what lets Room Size change actual reflection timing, not just decay rate, without needing to reallocate buffers at runtime.
+- **Wall Material via one-pole spectral tilt:** a single-pole filter applied post-diffusion-network, where positive tilt darkens/warms (wood, carpet — absorptive materials) and negative tilt brightens (concrete, tile, glass — reflective materials). Deliberately not a full absorption-curve model — chosen for being cheap and audibly/directionally correct rather than acoustically precise.
+- **Wet/dry intensity curve:** previously capped at roughly 65% dry / 1.4x wet even at maximum settings, which read as "present but minimal" in real-device testing regardless of slider position. Revised so 100% wet can attenuate dry to ~15% and boost wet up to 2.2x (reverb) / 1.8x (echo) — this, not the room-size or material work, was the actual fix for the "too subtle" complaint.
 
 ### 8.4 Audio Format & Buffer Handling
 

@@ -143,7 +143,9 @@ data class DaydreamUiState(
     val reverbDampingPercent: Float = 35f,
     val echoWetPercent: Float = 0f,
     val echoTimeMs: Int = 320,
-    val echoFeedbackPercent: Float = 30f
+    val echoFeedbackPercent: Float = 30f,
+    val roomSize: com.example.audio.AudioEngine.RoomSize = com.example.audio.AudioEngine.RoomSize.LARGE_HALL,
+    val wallMaterial: com.example.audio.AudioEngine.WallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER
 )
 
 class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
@@ -543,7 +545,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setEchoTimeMs(timeMs: Int) {
-        val clamped = timeMs.coerceIn(50, 1000)
+        val clamped = timeMs.coerceIn(50, 2000)
         audioEngine.echoTimeMs = clamped
         systemEffects.updateReverb(
             wetPercent = _uiState.value.reverbWetPercent,
@@ -556,7 +558,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setEchoFeedback(percent: Float) {
-        val clamped = percent.coerceIn(0f, 80f)
+        val clamped = percent.coerceIn(0f, 92f)
         audioEngine.echoFeedback = clamped
         systemEffects.updateReverb(
             wetPercent = _uiState.value.reverbWetPercent,
@@ -567,6 +569,17 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             echoFeedbackPercent = clamped
         )
         _uiState.update { it.copy(echoFeedbackPercent = clamped) }
+    }
+
+    // Room Size & Wall Material character presets (PRD 6.15)
+    fun setRoomSize(size: com.example.audio.AudioEngine.RoomSize) {
+        audioEngine.roomSize = size
+        _uiState.update { it.copy(roomSize = size) }
+    }
+
+    fun setWallMaterial(material: com.example.audio.AudioEngine.WallMaterial) {
+        audioEngine.wallMaterial = material
+        _uiState.update { it.copy(wallMaterial = material) }
     }
 
     fun toggleLofiMode() {
@@ -917,6 +930,8 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             put("echoTimeMs", s.echoTimeMs)
             put("echoFeedbackPercent", s.echoFeedbackPercent)
             put("echoWetPercent", s.echoWetPercent)
+            put("roomSize", s.roomSize.name)
+            put("wallMaterial", s.wallMaterial.name)
             put("playbackSpeed", s.playbackSpeed)
             put("isLofiMode", s.isLofiMode)
         }
@@ -948,6 +963,12 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val echoTime = json.optInt("echoTimeMs", 320)
             val echoFeedback = json.optDouble("echoFeedbackPercent", 30.0).toFloat()
             val echoWet = json.optDouble("echoWetPercent", 0.0).toFloat()
+            val roomSizeName = json.optString("roomSize", com.example.audio.AudioEngine.RoomSize.LARGE_HALL.name)
+            val wallMaterialName = json.optString("wallMaterial", com.example.audio.AudioEngine.WallMaterial.PLASTER.name)
+            val roomSizeValue = runCatching { com.example.audio.AudioEngine.RoomSize.valueOf(roomSizeName) }
+                .getOrDefault(com.example.audio.AudioEngine.RoomSize.LARGE_HALL)
+            val wallMaterialValue = runCatching { com.example.audio.AudioEngine.WallMaterial.valueOf(wallMaterialName) }
+                .getOrDefault(com.example.audio.AudioEngine.WallMaterial.PLASTER)
             val compThreshold = json.optDouble("compThresholdDb", -18.0).toFloat()
             val compRatio = json.optDouble("compRatio", 2.5).toFloat()
             val compAttack = json.optDouble("compAttackMs", 15.0).toFloat()
@@ -984,6 +1005,8 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             audioEngine.echoTimeMs = echoTime
             audioEngine.echoFeedback = echoFeedback
             audioEngine.echoWet = echoWet
+            audioEngine.roomSize = roomSizeValue
+            audioEngine.wallMaterial = wallMaterialValue
             systemEffects.updateReverb(
                 wetPercent = reverbWet,
                 roomSizePercent = reverbRoom,
@@ -1014,6 +1037,8 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     echoTimeMs = echoTime,
                     echoFeedbackPercent = echoFeedback,
                     echoWetPercent = echoWet,
+                    roomSize = roomSizeValue,
+                    wallMaterial = wallMaterialValue,
                     playbackSpeed = speed,
                     isLofiMode = lofi,
                     notificationMessage = "Preset imported successfully!"
@@ -1122,6 +1147,8 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         systemEffects.updateDynamicsCompressor(-18f, 2.5f, 15f, 80f)
         audioEngine.reverbWet = 0f
         audioEngine.echoWet = 0f
+        audioEngine.roomSize = com.example.audio.AudioEngine.RoomSize.LARGE_HALL
+        audioEngine.wallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER
         audioEngine.setPlaybackSpeed(1.0f)
         systemEffects.updateReverb(0f, 75f, 35f, 320, 0f)
 
@@ -1142,6 +1169,8 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                 compReleaseMs = 80f,
                 reverbWetPercent = 0f,
                 echoWetPercent = 0f,
+                roomSize = com.example.audio.AudioEngine.RoomSize.LARGE_HALL,
+                wallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER,
                 playbackSpeed = 1.0f,
                 isLofiMode = false,
                 activePresetId = null,
@@ -1245,6 +1274,8 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.echoWet = s.echoWetPercent
         audioEngine.echoTimeMs = s.echoTimeMs
         audioEngine.echoFeedback = s.echoFeedbackPercent
+        audioEngine.roomSize = s.roomSize
+        audioEngine.wallMaterial = s.wallMaterial
         systemEffects.updateReverb(
             wetPercent = s.reverbWetPercent,
             roomSizePercent = s.reverbRoomSizePercent,
