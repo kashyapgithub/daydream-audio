@@ -352,6 +352,17 @@ fun AdvancedModeScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    // In-app-only disclosure (PRD 12.1 capability boundary): Room
+                    // Size/Wall Material only exist in the custom Freeverb engine,
+                    // which only processes Daydream's own player - System-Wide
+                    // Mode uses Android's much more limited stock reverb instead.
+                    Text(
+                        text = "Room Size & Wall Material only apply to Daydream's own player — not to other apps enhanced via System-Wide Mode.",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+
                     // Room Size character preset (PRD 6.15) - changes actual comb
                     // delay length, not just decay time, so each size feels
                     // structurally distinct, not just "longer tail"
@@ -495,6 +506,16 @@ fun AdvancedModeScreen(
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    // In-app-only disclosure (PRD 12.1): this is a hard Android
+                    // platform limit, not a scoping choice - there is no API to
+                    // change another app's playback speed on unrooted Android.
+                    Text(
+                        text = "Tempo/Vari-Speed only works on Daydream's own player — Android has no way to change another app's playback speed.",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
 
                     // Playback Tempo
                     LiquidSlider(
