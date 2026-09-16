@@ -29,6 +29,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -429,7 +431,7 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setReverbWet(it) },
                         valueRange = 0f..100f,
                         unit = "%",
-                        technicalValue = "Wet/Dry Blend (up to 2.2x wet gain at max)",
+                        technicalValue = "Wet/Dry Blend (up to 2.6x wet gain at max)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )
@@ -474,9 +476,9 @@ fun AdvancedModeScreen(
                         title = "Echo Delay Time",
                         value = uiState.echoTimeMs.toFloat(),
                         onValueChange = { viewModel.setEchoTimeMs(it.toInt()) },
-                        valueRange = 50f..2000f,
+                        valueRange = 50f..3000f,
                         unit = "ms",
-                        technicalValue = "${uiState.echoTimeMs}ms (delay buffer, up to 2s for canyon/dub-style delays)",
+                        technicalValue = "${uiState.echoTimeMs}ms (up to 3s for huge canyon/dub delays)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )
@@ -485,9 +487,9 @@ fun AdvancedModeScreen(
                         title = "Echo Feedback (Repeats)",
                         value = uiState.echoFeedbackPercent,
                         onValueChange = { viewModel.setEchoFeedback(it) },
-                        valueRange = 0f..92f,
+                        valueRange = 0f..96f,
                         unit = "%",
-                        technicalValue = "Crossfeed Loop Gain (near-self-oscillating at max)",
+                        technicalValue = "Crossfeed Loop Gain (near-infinite trailing echo at max)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )
@@ -499,12 +501,58 @@ fun AdvancedModeScreen(
                         title = "Playback Speed / Tempo",
                         value = uiState.playbackSpeed,
                         onValueChange = { viewModel.setPlaybackSpeed(it) },
-                        valueRange = 0.5f..1.5f,
+                        valueRange = 0.25f..2.0f,
                         unit = "x",
-                        technicalValue = "Time-Stretch Ratio",
+                        technicalValue = if (uiState.varispeedMode) "Vari-Speed (pitch follows tempo)" else "Time-Stretch (pitch preserved)",
                         showTechnical = true,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    // Honesty indicator (PRD 12.1 pattern): some devices/OEMs
+                    // clamp extreme speed requests rather than applying them
+                    // as requested - tell the user instead of pretending.
+                    if (!uiState.speedAppliedAsRequested) {
+                        Text(
+                            text = "Your device applied ${String.format("%.2f", uiState.confirmedPlaybackSpeed)}x instead of ${String.format("%.2f", uiState.playbackSpeed)}x — this is a hardware/OEM limit, not a bug.",
+                            fontSize = 11.sp,
+                            color = GlassTokens.AccentWarning,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "Vari-Speed (Tape Slowdown)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = if (uiState.varispeedMode) {
+                                    "Pitch drops as you slow down — the classic tape/vinyl slowdown sound (pairs well with heavy echo/reverb above)."
+                                } else {
+                                    "Pitch stays natural regardless of speed — studio/podcast-style time-stretch."
+                                },
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = uiState.varispeedMode,
+                            onCheckedChange = { viewModel.setVarispeedMode(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = GlassTokens.AccentStart
+                            )
+                        )
+                    }
                 }
             }
         }

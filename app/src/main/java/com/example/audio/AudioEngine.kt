@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.PlaybackParams
+import android.util.Log
 import com.example.model.DemoTrack
 import com.example.model.PlainBand
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,7 @@ class AudioEngine {
     companion object {
         const val SAMPLE_RATE = 44100
         private const val BUFFER_SIZE = 2048
+        private const val TAG = "AudioEngine"
     }
 
     private var audioTrack: AudioTrack? = null
@@ -94,9 +96,22 @@ class AudioEngine {
 
     // Echo / Delay Parameters (Stereo Ping-Pong with Tape Damping)
     var echoWet: Float = 0f // 0 to 100%
-    var echoTimeMs: Int = 320 // 50 to 2000 ms - widened range for canyon/dub-style long delays (PRD 6.15)
-    var echoFeedback: Float = 30f // 0 to 92% - widened for near-self-oscillating trailing echoes
+    var echoTimeMs: Int = 320 // 50 to 3000 ms - widened for "a lot of echo" (PRD 6.17)
+    var echoFeedback: Float = 30f // 0 to 96% - near-infinite trailing echo at max
     var echoPingPong: Boolean = true
+
+    // Vari-Speed / Tape Slowdown (PRD 6.17) - when true, pitch drops with tempo
+    // like a real tape/vinyl slowing down. When false, pitch is preserved
+    // (studio/podcast-style time-stretch).
+    var varispeedMode: Boolean = true
+    // Honesty layer (PRD 12.1 pattern applied here too): what speed/pitch the
+    // OS actually confirmed applying, vs what was requested - Android's own
+    // docs state out-of-range speed/pitch values are handled by an
+    // OEM-dependent "fallback mode" that may clamp or mute rather than throw,
+    // so silently assuming success is not safe. Exposed to the UI.
+    var lastRequestedSpeed: Float = 1.0f
+    var lastConfirmedSpeed: Float = 1.0f
+    var speedAppliedAsRequested: Boolean = true
 
     // Playback Tempo (0.5x to 1.5x, API 23+ PlaybackParams time-stretching)
     var playbackSpeed: Float = 1.0f
@@ -397,8 +412,8 @@ class AudioEngine {
     private val reverbToneTiltL = ToneTilt()
     private val reverbToneTiltR = ToneTilt()
 
-    // Echo / Delay State (44.1kHz stereo ring buffer, up to 2000ms delay - PRD 6.15)
-    private val echoBufferSize = 88200
+    // Echo / Delay State (44.1kHz stereo ring buffer, up to 3000ms delay - PRD 6.17)
+    private val echoBufferSize = 132300
     private val echoBufferL = DoubleArray(echoBufferSize)
     private val echoBufferR = DoubleArray(echoBufferSize)
     private var echoWriteIndex = 0
@@ -439,8 +454,12 @@ class AudioEngine {
         audioTrack?.play()
         try {
             val params = audioTrack?.playbackParams ?: PlaybackParams()
-            audioTrack?.playbackParams = params.setSpeed(playbackSpeed)
-        } catch (e: Exception) {}
+            params.setSpeed(playbackSpeed)
+            params.setPitch(if (varispeedMode) playbackSpeed else 1.0f)
+            audioTrack?.playbackParams = params
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to apply initial playback params", e)
+        }
 
         playbackJob = scope.launch(Dispatchers.Default) {
             val pcmBuffer = ShortArray(BUFFER_SIZE * 2)
@@ -516,14 +535,36 @@ class AudioEngine {
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        val clamped = speed.coerceIn(0.5f, 1.5f)
+        val clamped = speed.coerceIn(0.25f, 2.0f)
         playbackSpeed = clamped
+        lastRequestedSpeed = clamped
         try {
             audioTrack?.let { track ->
                 val params = track.playbackParams ?: PlaybackParams()
-                track.playbackParams = params.setSpeed(clamped)
+                params.setSpeed(clamped)
+                // Vari-Speed: let pitch drop with tempo for real tape/vinyl
+                // slowdown character. Preserve-pitch mode (varispeedMode =
+                // false) leaves pitch at 1.0 for a studio/podcast-style
+                // time-stretch instead.
+                params.setPitch(if (varispeedMode) clamped else 1.0f)
+                track.playbackParams = params
+
+                // Honesty check (PRD 12.1 pattern): Android's own docs state
+                // out-of-range speed/pitch is handled by an OEM-dependent
+                // "fallback mode" that may clamp or mute rather than throw -
+                // read back what was actually applied instead of assuming
+                // the request succeeded as-is.
+                val confirmed = track.playbackParams?.speed ?: clamped
+                lastConfirmedSpeed = confirmed
+                speedAppliedAsRequested = kotlin.math.abs(confirmed - clamped) < 0.02f
+                if (!speedAppliedAsRequested) {
+                    Log.w(TAG, "Requested speed $clamped but device applied $confirmed - likely OEM/hardware clamping")
+                }
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            speedAppliedAsRequested = false
+            Log.e(TAG, "Failed to apply playback speed $clamped", e)
+        }
     }
 
     fun resetReverb() {
@@ -849,7 +890,7 @@ class AudioEngine {
         if (abs(prevEchoFilterL) < 1e-15) prevEchoFilterL = 0.0
         if (abs(prevEchoFilterR) < 1e-15) prevEchoFilterR = 0.0
 
-        val feedbackFactor = (echoFeedback / 100.0).coerceIn(0.0, 0.92)
+        val feedbackFactor = (echoFeedback / 100.0).coerceIn(0.0, 0.96)
         val crossfeed = if (echoPingPong) 0.25 else 0.0
 
         // Ping-pong crossfeed into delay buffers
@@ -865,8 +906,8 @@ class AudioEngine {
             return Pair(inL, inR)
         }
 
-        val outL = inL * (1.0 - wetFactor * 0.80) + delayedL * (wetFactor * 1.8)
-        val outR = inR * (1.0 - wetFactor * 0.80) + delayedR * (wetFactor * 1.8)
+        val outL = inL * (1.0 - wetFactor * 0.92) + delayedL * (wetFactor * 2.4)
+        val outR = inR * (1.0 - wetFactor * 0.92) + delayedR * (wetFactor * 2.4)
 
         return Pair(outL, outR)
     }
@@ -922,8 +963,8 @@ class AudioEngine {
         // dry / 1.4x wet blend even at 100% wet, which is why the effect felt
         // minimal regardless of slider position. Now 100% wet nearly fully
         // replaces the dry signal for genuinely huge, dominant reverb character.
-        val finalL = inL * (1.0 - wetGain * 0.85) + wetL * (wetGain * 2.2)
-        val finalR = inR * (1.0 - wetGain * 0.85) + wetR * (wetGain * 2.2)
+        val finalL = inL * (1.0 - wetGain * 0.90) + wetL * (wetGain * 2.6)
+        val finalR = inR * (1.0 - wetGain * 0.90) + wetR * (wetGain * 2.6)
 
         return Pair(finalL, finalR)
     }

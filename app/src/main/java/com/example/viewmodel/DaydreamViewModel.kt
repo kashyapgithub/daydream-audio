@@ -145,7 +145,10 @@ data class DaydreamUiState(
     val echoTimeMs: Int = 320,
     val echoFeedbackPercent: Float = 30f,
     val roomSize: com.example.audio.AudioEngine.RoomSize = com.example.audio.AudioEngine.RoomSize.LARGE_HALL,
-    val wallMaterial: com.example.audio.AudioEngine.WallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER
+    val wallMaterial: com.example.audio.AudioEngine.WallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER,
+    val varispeedMode: Boolean = true,
+    val speedAppliedAsRequested: Boolean = true,
+    val confirmedPlaybackSpeed: Float = 1.0f
 )
 
 class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
@@ -487,9 +490,24 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
 
     // Time & Space FX: Tempo, Reverb, Echo, and Lofi Mode
     fun setPlaybackSpeed(speed: Float) {
-        val clamped = speed.coerceIn(0.5f, 1.5f)
+        val clamped = speed.coerceIn(0.25f, 2.0f)
         audioEngine.setPlaybackSpeed(clamped)
-        _uiState.update { it.copy(playbackSpeed = clamped) }
+        // Honesty check (PRD 12.1 pattern): reflect what the OS actually
+        // confirmed, not just what was requested - some devices/OEMs clamp
+        // extreme speed values rather than applying them as-is.
+        _uiState.update {
+            it.copy(
+                playbackSpeed = clamped,
+                speedAppliedAsRequested = audioEngine.speedAppliedAsRequested,
+                confirmedPlaybackSpeed = audioEngine.lastConfirmedSpeed
+            )
+        }
+    }
+
+    fun setVarispeedMode(enabled: Boolean) {
+        audioEngine.varispeedMode = enabled
+        audioEngine.setPlaybackSpeed(audioEngine.playbackSpeed) // re-apply pitch immediately
+        _uiState.update { it.copy(varispeedMode = enabled) }
     }
 
     fun setReverbWet(percent: Float) {
@@ -545,7 +563,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setEchoTimeMs(timeMs: Int) {
-        val clamped = timeMs.coerceIn(50, 2000)
+        val clamped = timeMs.coerceIn(50, 3000)
         audioEngine.echoTimeMs = clamped
         systemEffects.updateReverb(
             wetPercent = _uiState.value.reverbWetPercent,
@@ -558,7 +576,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setEchoFeedback(percent: Float) {
-        val clamped = percent.coerceIn(0f, 92f)
+        val clamped = percent.coerceIn(0f, 96f)
         audioEngine.echoFeedback = clamped
         systemEffects.updateReverb(
             wetPercent = _uiState.value.reverbWetPercent,
@@ -933,6 +951,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             put("roomSize", s.roomSize.name)
             put("wallMaterial", s.wallMaterial.name)
             put("playbackSpeed", s.playbackSpeed)
+            put("varispeedMode", s.varispeedMode)
             put("isLofiMode", s.isLofiMode)
         }
         return json.toString(2)
@@ -974,6 +993,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val compAttack = json.optDouble("compAttackMs", 15.0).toFloat()
             val compRelease = json.optDouble("compReleaseMs", 80.0).toFloat()
             val speed = json.optDouble("playbackSpeed", 1.0).toFloat()
+            val varispeed = json.optBoolean("varispeedMode", true)
             val lofi = json.optBoolean("isLofiMode", false)
 
             audioEngine.eqGains.putAll(importedEq)
@@ -1014,6 +1034,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                 echoTimeMs = echoTime,
                 echoWetPercent = echoWet
             )
+            audioEngine.varispeedMode = varispeed
             audioEngine.setPlaybackSpeed(speed)
             audioEngine.updateDspCoefficients()
 
@@ -1040,6 +1061,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     roomSize = roomSizeValue,
                     wallMaterial = wallMaterialValue,
                     playbackSpeed = speed,
+                    varispeedMode = varispeed,
                     isLofiMode = lofi,
                     notificationMessage = "Preset imported successfully!"
                 )
@@ -1149,6 +1171,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.echoWet = 0f
         audioEngine.roomSize = com.example.audio.AudioEngine.RoomSize.LARGE_HALL
         audioEngine.wallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER
+        audioEngine.varispeedMode = true
         audioEngine.setPlaybackSpeed(1.0f)
         systemEffects.updateReverb(0f, 75f, 35f, 320, 0f)
 
@@ -1172,6 +1195,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                 roomSize = com.example.audio.AudioEngine.RoomSize.LARGE_HALL,
                 wallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER,
                 playbackSpeed = 1.0f,
+                varispeedMode = true,
                 isLofiMode = false,
                 activePresetId = null,
                 notificationMessage = "All sliders reset to neutral flat"
@@ -1284,6 +1308,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             echoWetPercent = s.echoWetPercent,
             echoFeedbackPercent = s.echoFeedbackPercent
         )
+        audioEngine.varispeedMode = s.varispeedMode
         audioEngine.setPlaybackSpeed(s.playbackSpeed)
         audioEngine.updateDspCoefficients()
     }
