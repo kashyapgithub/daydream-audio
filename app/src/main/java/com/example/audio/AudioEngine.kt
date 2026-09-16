@@ -232,6 +232,34 @@ class AudioEngine {
         }
     }
 
+    // Real 8-band spectrum analyzer (RBJ constant-peak-gain bandpass biquads),
+    // driven by actual per-frequency energy of the fully-processed output -
+    // NOT the old approach, which took one broadband RMS number and scaled it
+    // by 8 fixed multipliers (meaning all "bands" always moved in lockstep and
+    // never reflected the real frequency content of what was playing).
+    private val spectrumBandFreqs = doubleArrayOf(60.0, 150.0, 400.0, 1000.0, 2500.0, 5000.0, 8000.0, 12000.0)
+    private val spectrumBandCompensation = doubleArrayOf(1.0, 1.1, 1.3, 1.6, 2.0, 2.6, 3.2, 4.0) // higher bands carry less raw energy in typical music - compensate so the visualizer isn't permanently bass-dominated
+    private val spectrumFilters = Array(8) { BiquadState() }
+    private val spectrumSmoothed = FloatArray(8) { 0.05f }
+    private var spectrumFiltersConfigured = false
+
+    private fun configureSpectrumFilters() {
+        for (i in spectrumBandFreqs.indices) {
+            val f0 = spectrumBandFreqs[i]
+            val q = 1.2
+            val w0 = 2.0 * PI * f0 / SAMPLE_RATE
+            val alpha = sin(w0) / (2.0 * q)
+            val a0 = 1.0 + alpha
+            spectrumFilters[i].b0 = alpha / a0
+            spectrumFilters[i].b1 = 0.0
+            spectrumFilters[i].b2 = -alpha / a0
+            spectrumFilters[i].a1 = (-2.0 * cos(w0)) / a0
+            spectrumFilters[i].a2 = (1.0 - alpha) / a0
+        }
+        spectrumFiltersConfigured = true
+    }
+
+
     // Schroeder / Freeverb Low-Pass Feedback Comb Filter with anti-denormal flush
     class CombFilter(val maxSize: Int) {
         private val buffer = DoubleArray(maxSize)
@@ -425,6 +453,8 @@ class AudioEngine {
                 var lrProdSum = 0.0
                 var lSqSum = 0.0
                 var rSqSum = 0.0
+                if (!spectrumFiltersConfigured) configureSpectrumFilters()
+                val spectrumEnergyAccum = DoubleArray(8)
 
                 val track = demoTracks[currentTrackIndex]
 
@@ -437,6 +467,15 @@ class AudioEngine {
                     lrProdSum += outL * outR
                     lSqSum += outL * outL
                     rSqSum += outR * outR
+
+                    // Real per-band energy for the spectrum visualizer - filters
+                    // the actual processed output (what the user hears), not a
+                    // fabricated approximation.
+                    val monoOutForSpectrum = (outL + outR) * 0.5
+                    for (b in 0 until 8) {
+                        val filtered = spectrumFilters[b].processL(monoOutForSpectrum)
+                        spectrumEnergyAccum[b] += filtered * filtered
+                    }
 
                     // TPDF Dither before 16-bit integer quantization (PRD 8.4)
                     val dither = (Random.nextDouble() - Random.nextDouble()) / 32768.0
@@ -456,7 +495,7 @@ class AudioEngine {
                 audioTrack?.write(pcmBuffer, 0, pcmBuffer.size)
 
                 val rms = sqrt(rmsSum / (BUFFER_SIZE * 2)).toFloat()
-                generateSpectrum(spectrumBands, rms)
+                computeSpectrumBands(spectrumEnergyAccum, spectrumBands)
                 onSpectrumUpdated?.invoke(spectrumBands, rms)
             }
         }
@@ -1103,20 +1142,20 @@ class AudioEngine {
         biquad.a2 = (1.0 - alpha) / a0
     }
 
-    private fun generateSpectrum(outBands: FloatArray, rms: Float) {
-        val rumbleGain = (eqGains[PlainBand.RUMBLE] ?: 0f) / 12f
-        val warmthGain = (eqGains[PlainBand.WARMTH] ?: 0f) / 12f
-        val bodyGain = (eqGains[PlainBand.BODY] ?: 0f) / 12f
-        val clarityGain = (eqGains[PlainBand.CLARITY] ?: 0f) / 12f
-        val airGain = (eqGains[PlainBand.AIR] ?: 0f) / 12f
+    private fun computeSpectrumBands(energyAccum: DoubleArray, outBands: FloatArray) {
+        for (b in 0 until 8) {
+            val rawLevel = sqrt(energyAccum[b] / BUFFER_SIZE)
+            // Perceptual compensation + soft compression: raw bandpass energy
+            // differs by orders of magnitude between bass and treble in typical
+            // music, so a straight readout would look permanently bass-heavy.
+            val compensated = (rawLevel * spectrumBandCompensation[b]).pow(0.6)
+            val target = compensated.toFloat().coerceIn(0.03f, 1f)
 
-        outBands[0] = (rms * 1.8f * (1f + rumbleGain)).coerceIn(0.05f, 1f)
-        outBands[1] = (rms * 1.5f * (1f + warmthGain)).coerceIn(0.05f, 1f)
-        outBands[2] = (rms * 1.3f * (1f + warmthGain * 0.5f)).coerceIn(0.05f, 1f)
-        outBands[3] = (rms * 1.2f * (1f + bodyGain)).coerceIn(0.05f, 1f)
-        outBands[4] = (rms * 1.1f * (1f + bodyGain * 0.8f)).coerceIn(0.05f, 1f)
-        outBands[5] = (rms * 1.2f * (1f + clarityGain)).coerceIn(0.05f, 1f)
-        outBands[6] = (rms * 1.4f * (1f + clarityGain * 0.6f + airGain * 0.4f)).coerceIn(0.05f, 1f)
-        outBands[7] = (rms * 1.6f * (1f + airGain)).coerceIn(0.05f, 1f)
+            // VU-meter-style ballistics: fast attack (bars jump up quickly on a
+            // hit), slower release (they fall gently rather than flickering).
+            val coef = if (target > spectrumSmoothed[b]) 0.55f else 0.15f
+            spectrumSmoothed[b] += (target - spectrumSmoothed[b]) * coef
+            outBands[b] = spectrumSmoothed[b].coerceIn(0.03f, 1f)
+        }
     }
 }

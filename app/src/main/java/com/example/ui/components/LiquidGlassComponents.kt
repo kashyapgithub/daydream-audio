@@ -21,10 +21,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -755,4 +757,82 @@ fun BandTooltipDialog(
         containerColor = Color(0xFF101522),
         shape = GlassTokens.radiusLg
     )
+}
+
+/**
+ * Home-page spectrum visualizer - a larger, dedicated display than the tiny
+ * 6-bar strip in NowPlayingGlassBar. Backed by AudioEngine's real 8-band
+ * bandpass analysis (per-frequency energy of the actual processed output),
+ * not a fabricated approximation. Bar color sweeps warm-to-cool across the
+ * low-to-high frequency bands, tying into the Sonic Glass material identity
+ * (PRD 22.7) rather than being a generic uniform-colored bar chart.
+ */
+@Composable
+fun HomeSpectrumVisualizer(
+    spectrum: FloatArray,
+    isPlaying: Boolean,
+    reduceGlass: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .raisedGlass(reduceGlass)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Live Spectrum",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextPrimary
+                )
+                Text(
+                    text = if (isPlaying) "Rumble → Air" else "Paused",
+                    fontSize = 11.sp,
+                    color = GlassTokens.TextSecondary
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val bandCount = spectrum.size.coerceAtLeast(1)
+                spectrum.forEachIndexed { index, rawLevel ->
+                    val animatedLevel by animateFloatAsState(
+                        targetValue = if (isPlaying) rawLevel.coerceIn(0.03f, 1f) else 0.03f,
+                        animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing),
+                        label = "spectrum_bar_$index"
+                    )
+                    // Warm (bass) -> cool (treble) sweep across bands, so the bar
+                    // set doubles as a rough frequency-position indicator.
+                    val fraction = index.toFloat() / (bandCount - 1).coerceAtLeast(1)
+                    val barColor = androidx.compose.ui.graphics.lerp(
+                        Color(0xFFFF9F0A), // warm amber for low bands
+                        Color(0xFF64D2FF), // cool cyan for high bands
+                        fraction
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(animatedLevel)
+                            .clip(GlassTokens.radiusPill)
+                            .background(
+                                if (isPlaying) SolidColor(barColor)
+                                else SolidColor(Color.White.copy(alpha = 0.15f))
+                            )
+                    )
+                }
+            }
+        }
+    }
 }

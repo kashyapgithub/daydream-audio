@@ -109,6 +109,17 @@ fun SimpleModeScreen(
             }
         }
 
+        // Prominent home-page spectrum visualizer (real 8-band data, see
+        // AudioEngine.computeSpectrumBands - previously only a tiny 6-bar
+        // strip existed, buried in the bottom Now Playing bar).
+        item {
+            com.example.ui.components.HomeSpectrumVisualizer(
+                spectrum = uiState.spectrum,
+                isPlaying = uiState.isPlaying,
+                reduceGlass = uiState.reduceGlass
+            )
+        }
+
         // Contextual tip (PRD 12.1 / FR-16): surfaced exactly when it's actionable -
         // global hook not active + currently on the one output route (built-in
         // speaker) most likely to be the reason why, per confirmed real-world

@@ -240,6 +240,15 @@ This subsystem was built during implementation as a creative time/space effects 
 - **Widened echo range:** delay time extended from a 1000ms ceiling to 2000ms (canyon/dub-style long delays), feedback ceiling raised from 80% to 92% (near-self-oscillating trailing echoes, still numerically stable).
 - Both Room Size and Wall Material are independent of the existing continuous Reverb Room Size / Damping sliders (6.x) — the discrete presets set a baseline character, the continuous sliders fine-tune within it. Persisted in preset export/import alongside the other reverb/echo parameters.
 
+### 6.16 Live Spectrum Visualizer — Real Data Correction (documented retroactively)
+
+The original spectrum visualizer (feeding both the small bar strip in the Now Playing bar and, now, the new home-page display below) was found during review to be fake: it computed one broadband RMS loudness number per audio buffer and scaled that same single number by 8 fixed multipliers to produce "8 bands" — meaning every bar always moved in lockstep and never reflected which frequencies were actually present in the audio. This was flagged directly from real usage ("this visualizer doesn't work, like dummy stuff") and corrected as follows:
+
+- **Real per-band analysis:** 8 RBJ constant-peak-gain bandpass biquad filters (log-spaced center frequencies: 60Hz, 150Hz, 400Hz, 1kHz, 2.5kHz, 5kHz, 8kHz, 12kHz) are run on the actual fully-processed output signal, per sample, inside the existing processing loop — not a separate/approximated pass. Each band's true energy is accumulated across the buffer and converted to a level via RMS.
+- **Perceptual compensation + VU-meter ballistics:** raw bandpass energy is heavily bass-skewed for most music, so each band applies a compensation gain (1.0x at 60Hz up to 4.0x at 12kHz) plus a soft compression curve, then a fast-attack/slow-release smoothing pass (matching real VU meter behavior) so the display looks lively rather than jittery or permanently bass-dominated.
+- **Home-page visualizer (new):** a larger, dedicated 8-bar display was added directly to the Simple Mode home screen (previously the only visualizer was a small 6-bar strip buried in the persistent bottom Now Playing bar) — bar color sweeps warm-to-cool across the bands (bass = amber, treble = cyan), tying into the Sonic Glass material identity (PRD 22.7) rather than being a generic uniform bar chart.
+- This is a good example of why real-device testing matters even for "just a visualizer" — the bug was invisible from reading the UI code alone; it only became apparent from someone actually watching the bars move and noticing they didn't correspond to what was audibly happening in the music.
+
 ---
 
 ### Principles
