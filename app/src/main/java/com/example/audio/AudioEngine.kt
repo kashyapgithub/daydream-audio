@@ -872,9 +872,30 @@ class AudioEngine {
         return Pair(boostedL, boostedR)
     }
 
+    // Defensive inter-stage soft saturation (bugfix): widening the echo and
+    // reverb wet-mix gains independently (6.17) without accounting for them
+    // being CASCADED (echo output feeds directly into reverb input) created a
+    // real risk of the signal compounding toward Infinity/NaN under extreme
+    // simultaneous settings, before ever reaching the final limiter. This
+    // clamps at a ceiling far above any normal or even extreme perceptual
+    // level (+-4.0, i.e. +12dB over full scale) - it exists purely to stop
+    // runaway feedback accumulation across cascaded stages, not to shape the
+    // sound audibly in ordinary use.
+    private fun interStageSafetyClamp(x: Double, ceiling: Double = 4.0): Double {
+        if (x.isNaN() || x.isInfinite()) return 0.0
+        val knee = ceiling * 0.9
+        if (abs(x) < knee) return x
+        val sign = if (x >= 0) 1.0 else -1.0
+        val over = abs(x) - knee
+        return sign * (knee + (ceiling - knee) * tanh(over / (ceiling - knee)))
+    }
+
     fun processStereoEchoAndReverb(inL: Double, inR: Double): Pair<Double, Double> {
         val (echoL, echoR) = processStereoEcho(inL, inR)
-        return processStereoReverb(echoL, echoR)
+        val safeEchoL = interStageSafetyClamp(echoL)
+        val safeEchoR = interStageSafetyClamp(echoR)
+        val (revL, revR) = processStereoReverb(safeEchoL, safeEchoR)
+        return Pair(interStageSafetyClamp(revL), interStageSafetyClamp(revR))
     }
 
     fun processStereoEcho(inL: Double, inR: Double): Pair<Double, Double> {
