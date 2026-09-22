@@ -199,12 +199,12 @@ class IntegrationTest {
 
     @Test
     fun testTempoRangeClamping() {
-        // Values outside [0.5, 1.5] must be clamped
+        // Values outside [0.25, 2.0] must be clamped (PRD 6.17)
         engine.setPlaybackSpeed(0.1f)
-        assertEquals(0.5f, engine.playbackSpeed, 0.001f)
+        assertEquals(0.25f, engine.playbackSpeed, 0.001f)
 
         engine.setPlaybackSpeed(2.5f)
-        assertEquals(1.5f, engine.playbackSpeed, 0.001f)
+        assertEquals(2.0f, engine.playbackSpeed, 0.001f)
 
         engine.setPlaybackSpeed(1.0f)
         assertEquals(1.0f, engine.playbackSpeed, 0.001f)

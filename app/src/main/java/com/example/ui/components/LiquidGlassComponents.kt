@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -807,7 +806,8 @@ fun HomeSpectrumVisualizer(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 val bandCount = spectrum.size.coerceAtLeast(1)
-                spectrum.forEachIndexed { index, rawLevel ->
+                for (index in spectrum.indices) {
+                    val rawLevel = spectrum[index]
                     val animatedLevel by animateFloatAsState(
                         targetValue = if (isPlaying) rawLevel.coerceIn(0.03f, 1f) else 0.03f,
                         animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing),
