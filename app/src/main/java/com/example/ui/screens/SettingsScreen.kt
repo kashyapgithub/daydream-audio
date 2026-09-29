@@ -143,6 +143,16 @@ fun SettingsScreen(
                             IosRowSeparator(modifier = Modifier.padding(start = 54.dp))
                         }
                     }
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 10.dp))
+
+                    SettingToggleRow(
+                        title = "Auto-Switch Device Profiles",
+                        description = "Automatically applies tailored baseline Space & Punch profile upon connecting Bluetooth headphones or car audio.",
+                        checked = uiState.autoSwitchDeviceProfiles,
+                        onCheckedChange = { viewModel.toggleAutoSwitchDeviceProfiles() },
+                        testTag = "setting_auto_switch_device_profiles"
+                    )
                 }
             }
         }
@@ -244,6 +254,17 @@ fun SettingsScreen(
                         checked = uiState.reduceMotion,
                         onCheckedChange = { viewModel.toggleReduceMotion() },
                         testTag = "setting_reduce_motion"
+                    )
+
+                    IosRowSeparator()
+
+                    // Apple Health Hearing Comfort Limiter
+                    SettingToggleRow(
+                        title = "Hearing Comfort Limiter (85 dB SPL)",
+                        description = "Hard limits peak master gain to protect against sudden audio blasts and long-session ear fatigue.",
+                        checked = uiState.comfortLimiterEnabled,
+                        onCheckedChange = { viewModel.toggleComfortLimiter() },
+                        testTag = "setting_comfort_limiter"
                     )
 
                     IosRowSeparator()

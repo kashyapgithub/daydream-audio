@@ -183,3 +183,111 @@ data class DemoTrack(
     val baseFrequency: Float,
     val noiseType: String
 )
+
+/**
+ * User Custom Presets Bank
+ */
+data class CustomSoundPreset(
+    val id: String,
+    val name: String,
+    val colorHex: String = "#0A84FF",
+    val eqGains: Map<PlainBand, Float>,
+    val spacePercent: Float,
+    val punchPercent: Float,
+    val clarityPercent: Float,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+/**
+ * Curated Studio Sound Target Preset
+ */
+data class SoundTargetPreset(
+    val id: String,
+    val title: String,
+    val iconEmoji: String,
+    val subtitle: String,
+    val rumbleDb: Float,
+    val warmthDb: Float,
+    val bodyDb: Float,
+    val clarityDb: Float,
+    val airDb: Float,
+    val spacePercent: Float,
+    val punchPercent: Float,
+    val clarityPercent: Float
+) {
+    companion object {
+        val ALL: List<SoundTargetPreset> = listOf(
+            SoundTargetPreset(
+                id = "vocal",
+                title = "Vocal Clarity",
+                iconEmoji = "🎙️",
+                subtitle = "Podcast & Speech Articulation",
+                rumbleDb = -3f,
+                warmthDb = -1f,
+                bodyDb = 2f,
+                clarityDb = 4.5f,
+                airDb = 2f,
+                spacePercent = 25f,
+                punchPercent = 35f,
+                clarityPercent = 40f
+            ),
+            SoundTargetPreset(
+                id = "harman",
+                title = "Harman Target",
+                iconEmoji = "🎧",
+                subtitle = "Neutral Audiophile Reference",
+                rumbleDb = 2.5f,
+                warmthDb = 0.5f,
+                bodyDb = -0.5f,
+                clarityDb = 2f,
+                airDb = 1.5f,
+                spacePercent = 40f,
+                punchPercent = 25f,
+                clarityPercent = 20f
+            ),
+            SoundTargetPreset(
+                id = "club",
+                title = "Club Bass",
+                iconEmoji = "🔊",
+                subtitle = "Sub-Bass & Hard Transient Punch",
+                rumbleDb = 6f,
+                warmthDb = 4f,
+                bodyDb = 0f,
+                clarityDb = 1f,
+                airDb = 3.5f,
+                spacePercent = 50f,
+                punchPercent = 60f,
+                clarityPercent = 35f
+            ),
+            SoundTargetPreset(
+                id = "latenight",
+                title = "Late Night",
+                iconEmoji = "🌙",
+                subtitle = "Dialogue Lift & Soft Dynamic Peaks",
+                rumbleDb = -4f,
+                warmthDb = 2f,
+                bodyDb = 3f,
+                clarityDb = -1f,
+                airDb = -2f,
+                spacePercent = 20f,
+                punchPercent = 70f,
+                clarityPercent = 10f
+            ),
+            SoundTargetPreset(
+                id = "acoustic",
+                title = "Acoustic Air",
+                iconEmoji = "🎸",
+                subtitle = "Silky Sparkle & Wide Hall Room",
+                rumbleDb = -1.5f,
+                warmthDb = 1f,
+                bodyDb = 1.5f,
+                clarityDb = 3f,
+                airDb = 5.5f,
+                spacePercent = 60f,
+                punchPercent = 20f,
+                clarityPercent = 45f
+            )
+        )
+    }
+}
+

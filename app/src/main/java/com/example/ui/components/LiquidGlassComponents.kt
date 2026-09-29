@@ -53,11 +53,23 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -79,9 +91,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.model.CustomSoundPreset
 import com.example.model.DemoTrack
 import com.example.model.ParametricBand
 import com.example.model.PlainBand
+import com.example.model.SoundTargetPreset
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.floatingGlass
 import com.example.ui.theme.iosPressable
@@ -339,10 +353,20 @@ fun LiquidSlider(
             label = "apple_thumb_size"
         )
 
+        val haptic = LocalHapticFeedback.current
+        var lastVal by remember { mutableFloatStateOf(value) }
+
         @OptIn(ExperimentalMaterial3Api::class)
         Slider(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { newVal ->
+                val hasZero = 0f in valueRange && valueRange.start < 0f && valueRange.endInclusive > 0f
+                if (hasZero && ((lastVal < 0f && newVal >= 0f) || (lastVal > 0f && newVal <= 0f))) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+                lastVal = newVal
+                onValueChange(newVal)
+            },
             valueRange = valueRange,
             interactionSource = interactionSource,
             thumb = {
@@ -1229,6 +1253,7 @@ fun <T> IosSegmentedControl(
                 .border(0.5.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusSm)
         )
         Row(modifier = Modifier.fillMaxSize()) {
+            val haptic = LocalHapticFeedback.current
             items.forEachIndexed { index, item ->
                 val isSelected = index == selectedIndex
                 Box(
@@ -1236,7 +1261,12 @@ fun <T> IosSegmentedControl(
                         .weight(1f)
                         .fillMaxHeight()
                         .clip(GlassTokens.radiusSm)
-                        .clickable { onSelect(index) },
+                        .clickable {
+                            if (index != selectedIndex) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            onSelect(index)
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -1518,6 +1548,8 @@ fun AnalogCassetteDeck(
 @Composable
 fun ParametricEqCurveVisualizer(
     bands: List<ParametricBand>,
+    spectrum: FloatArray = FloatArray(8) { 0.1f },
+    isPlaying: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -1571,6 +1603,49 @@ fun ParametricEqCurveVisualizer(
                     start = Offset(x, 0f),
                     end = Offset(x, h),
                     strokeWidth = 0.6.dp.toPx()
+                )
+            }
+
+            // 1.5 Dual Real-Time Analyzer (Pre vs Post RTA Spectrum Overlay)
+            val rtaFreqs = listOf(35f, 90f, 220f, 550f, 1400f, 3600f, 8500f, 16000f)
+            val rtaBinWidth = (w / 12f).coerceAtLeast(14.dp.toPx())
+            for (i in 0 until 8) {
+                val binF = rtaFreqs.getOrElse(i) { 1000f }
+                val binX = freqToX(binF)
+                val rawEnergy = if (isPlaying) (spectrum.getOrElse(i) { 0.05f }).coerceIn(0.04f, 1f) else 0.06f
+
+                var eqBoostDb = 0f
+                for (b in bands) {
+                    val octDiff = kotlin.math.log2(binF.toDouble() / b.hz.toDouble()).toFloat()
+                    val qFactor = b.q.coerceAtLeast(0.2f)
+                    val denom = 1f + (octDiff * qFactor * 2.2f) * (octDiff * qFactor * 2.2f)
+                    eqBoostDb += b.gainDb / denom
+                }
+                val postEnergy = (rawEnergy * (1f + (eqBoostDb / 12f) * 0.45f)).coerceIn(0.02f, 1f)
+
+                // Pre-EQ RTA bar (subtle translucent cyan pillar)
+                val preBarHeight = (rawEnergy * (h * 0.70f)).coerceAtLeast(3f)
+                drawRoundRect(
+                    color = GlassTokens.IosTeal.copy(alpha = if (isPlaying) 0.16f else 0.06f),
+                    topLeft = Offset(binX - rtaBinWidth * 0.42f, h - preBarHeight),
+                    size = Size(rtaBinWidth * 0.84f, preBarHeight),
+                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                )
+
+                // Post-EQ RTA bar (brighter, neon-tinted active output peak)
+                val postBarHeight = (postEnergy * (h * 0.70f)).coerceAtLeast(2f)
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            GlassTokens.IosGreen.copy(alpha = if (isPlaying) 0.48f else 0.14f),
+                            GlassTokens.IosGreen.copy(alpha = if (isPlaying) 0.14f else 0.03f)
+                        ),
+                        startY = h - postBarHeight,
+                        endY = h
+                    ),
+                    topLeft = Offset(binX - rtaBinWidth * 0.25f, h - postBarHeight),
+                    size = Size(rtaBinWidth * 0.50f, postBarHeight),
+                    cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
                 )
             }
 
@@ -1663,13 +1738,22 @@ fun ParametricEqCurveVisualizer(
             }
         }
 
-        // Header overlay: Scale markers
+        // Header overlay: Scale markers & Dual RTA status
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text("+12 dB", fontSize = 9.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.SemiBold)
-            Text("LOGIC PRO TRANSFER RESPONSE", fontSize = 9.sp, color = GlassTokens.IosTeal, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(GlassTokens.IosTeal.copy(alpha = 0.7f)))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("PRE", fontSize = 8.sp, color = GlassTokens.IosTeal, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(GlassTokens.IosGreen))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("POST RTA", fontSize = 8.sp, color = GlassTokens.IosGreen, fontWeight = FontWeight.Bold)
+            }
             Text("-12 dB", fontSize = 9.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.SemiBold)
         }
     }
@@ -1987,6 +2071,9 @@ fun NowPlayingModalSheet(
     onPreviousTrack: () -> Unit,
     onToggleBypass: () -> Unit,
     onDismiss: () -> Unit,
+    audioRms: Float = 0.5f,
+    comfortLimiterEnabled: Boolean = false,
+    onToggleComfortLimiter: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -2075,7 +2162,16 @@ fun NowPlayingModalSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Apple Health Hearing Comfort Badge
+            HearingComfortBadge(
+                audioRms = audioRms,
+                isLimiterActive = comfortLimiterEnabled,
+                onToggleLimiter = onToggleComfortLimiter
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Audio Scrub Timeline Bar
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -2173,6 +2269,346 @@ fun NowPlayingModalSheet(
         }
     }
 }
+
+/**
+ * Cupertino Sound Target Carousel
+ * Fast-switching curated studio target profiles with tactile haptic feedback.
+ */
+@Composable
+fun SoundTargetCarousel(
+    targets: List<SoundTargetPreset>,
+    activeTargetId: String?,
+    onSelectTarget: (SoundTargetPreset) -> Unit,
+    onOpenSaveDialog: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "SOUND TARGETS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = GlassTokens.TextSecondary,
+                letterSpacing = 0.8.sp
+            )
+            Text(
+                text = "+ Save Custom",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = GlassTokens.IosBlue,
+                modifier = Modifier
+                    .clip(GlassTokens.radiusSm)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onOpenSaveDialog()
+                    }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            targets.forEach { target ->
+                val isSelected = target.id == activeTargetId
+                val targetBorder = if (isSelected) GlassTokens.IosBlue else Color(0xFF28282A)
+                val targetBg = if (isSelected) Color(0xFF1C2433) else Color(0xFF141416)
+
+                Box(
+                    modifier = Modifier
+                        .width(135.dp)
+                        .clip(GlassTokens.radiusMd)
+                        .background(targetBg)
+                        .border(
+                            width = if (isSelected) 1.2.dp else 0.7.dp,
+                            color = targetBorder,
+                            shape = GlassTokens.radiusMd
+                        )
+                        .clickable {
+                            if (!isSelected) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onSelectTarget(target)
+                            }
+                        }
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(target.iconEmoji, fontSize = 18.sp)
+                            if (isSelected) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(GlassTokens.radiusPill)
+                                        .background(GlassTokens.IosBlue)
+                                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                ) {
+                                    Text("ACTIVE", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = target.title,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GlassTokens.TextPrimary,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = target.subtitle,
+                            fontSize = 10.sp,
+                            color = GlassTokens.TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Apple Health Style Hearing Comfort & Live dB SPL Meter
+ * Real-time sound pressure level calculation with safe exposure classification and comfort limiter toggle.
+ */
+@Composable
+fun HearingComfortBadge(
+    audioRms: Float,
+    isLimiterActive: Boolean,
+    onToggleLimiter: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+    val dBSpl = (60f + (audioRms * 32f)).coerceIn(58f, 96f).toInt()
+    val isSafe = dBSpl < 75
+    val isModerate = dBSpl in 75..84
+    val statusColor = when {
+        isSafe -> GlassTokens.IosGreen
+        isModerate -> GlassTokens.IosOrange
+        else -> GlassTokens.IosRed
+    }
+    val statusText = when {
+        isSafe -> "OK • Safe Level"
+        isModerate -> "MODERATE • 8h Exposure"
+        else -> "LOUD • Protection Advised"
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusMd)
+            .background(Color(0xFF141416))
+            .border(0.8.dp, Color(0xFF28282A), GlassTokens.radiusMd)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(statusColor)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "$dBSpl dB SPL",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.TextPrimary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = statusText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = statusColor
+                        )
+                    }
+                    Text(
+                        text = "Apple Health Hearing Protection Standard",
+                        fontSize = 9.sp,
+                        color = GlassTokens.TextMuted
+                    )
+                }
+            }
+
+            if (onToggleLimiter != null) {
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(if (isLimiterActive) GlassTokens.IosBlue.copy(alpha = 0.22f) else Color(0xFF242426))
+                        .border(
+                            0.8.dp,
+                            if (isLimiterActive) GlassTokens.IosBlue else Color(0xFF38383A),
+                            GlassTokens.radiusPill
+                        )
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggleLimiter()
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = "Limiter",
+                            tint = if (isLimiterActive) GlassTokens.IosBlue else GlassTokens.TextSecondary,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isLimiterActive) "LIMITER ON" else "LIMITER",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isLimiterActive) GlassTokens.IosBlue else GlassTokens.TextSecondary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun parseHexToColor(hex: String): Color {
+    val clean = hex.removePrefix("#")
+    val colorInt = clean.toLongOrNull(16) ?: 0x0A84FF
+    return Color(if (clean.length == 6) (0xFF000000 or colorInt) else colorInt)
+}
+
+/**
+ * Cupertino Save Sound Preset Dialog
+ * Lets users name their current acoustic balance and pick an accent tint.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SavePresetDialog(
+    onSave: (name: String, colorHex: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var presetName by remember { mutableStateOf("") }
+    val colors = listOf("#0A84FF", "#30D158", "#BF5AF2", "#FF9F0A", "#FF375F")
+    var selectedColor by remember { mutableStateOf(colors.first()) }
+    val haptic = LocalHapticFeedback.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalName = if (presetName.isNotBlank()) presetName.trim() else "My Custom Preset"
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSave(finalName, selectedColor)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
+                shape = GlassTokens.radiusSm
+            ) {
+                Text("Save Preset", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                shape = GlassTokens.radiusSm
+            ) {
+                Text("Cancel", color = GlassTokens.TextSecondary)
+            }
+        },
+        title = {
+            Text(
+                text = "Save Sound Snapshot",
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = GlassTokens.TextPrimary
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Save your current EQ curve, spatial stage, and dynamics as a quick preset.",
+                    fontSize = 13.sp,
+                    color = GlassTokens.TextSecondary
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = presetName,
+                    onValueChange = { presetName = it },
+                    placeholder = { Text("e.g. Bass Sanctuary, Late Night Cans", color = GlassTokens.TextMuted, fontSize = 13.sp) },
+                    singleLine = true,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = GlassTokens.TextPrimary,
+                        cursorColor = GlassTokens.IosBlue,
+                        focusedBorderColor = GlassTokens.IosBlue,
+                        unfocusedBorderColor = Color(0xFF38383A)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Color Accent", fontSize = 12.sp, color = GlassTokens.TextSecondary, fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    colors.forEach { hex ->
+                        val color = parseHexToColor(hex)
+                        val isSelected = selectedColor == hex
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(
+                                    width = if (isSelected) 2.5.dp else 0.dp,
+                                    color = if (isSelected) Color.White else Color.Transparent,
+                                    shape = CircleShape
+                                )
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    selectedColor = hex
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        containerColor = Color(0xFF1C1C1E),
+        shape = GlassTokens.radiusLg
+    )
+}
+
 
 
 

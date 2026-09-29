@@ -70,6 +70,7 @@ import com.example.audio.AudioProcessingService
 import com.example.audio.SystemAudioEffectManager
 import com.example.ui.components.NowPlayingGlassBar
 import com.example.ui.components.NowPlayingModalSheet
+import com.example.ui.components.SavePresetDialog
 import com.example.ui.components.SonicGlassBackground
 import com.example.ui.screens.AdvancedModeScreen
 import com.example.ui.screens.GoldenEarScreen
@@ -338,7 +339,10 @@ class MainActivity : ComponentActivity() {
                                         viewModel.selectTrack(prevIdx)
                                     },
                                     onToggleBypass = { viewModel.toggleBypassAB() },
-                                    onDismiss = { isNowPlayingSheetOpen = false }
+                                    onDismiss = { isNowPlayingSheetOpen = false },
+                                    audioRms = uiState.audioRms,
+                                    comfortLimiterEnabled = uiState.comfortLimiterEnabled,
+                                    onToggleComfortLimiter = { viewModel.toggleComfortLimiter() }
                                 )
                             }
                         }
@@ -350,6 +354,14 @@ class MainActivity : ComponentActivity() {
                         WizardDiagnosisDialog(
                             onSelectComplaint = { viewModel.applyWizardComplaint(it) },
                             onDismiss = { viewModel.closeWizardDialog() }
+                        )
+                    }
+
+                    // Save Custom Sound Preset Modal Dialog
+                    if (uiState.showSavePresetDialog) {
+                        SavePresetDialog(
+                            onSave = { name, colorHex -> viewModel.saveCustomPreset(name, colorHex) },
+                            onDismiss = { viewModel.closeSavePresetDialog() }
                         )
                     }
                 }

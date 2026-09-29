@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Warning
@@ -41,13 +44,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.OutputDevice
 import com.example.model.PlainBand
+import com.example.model.SoundTargetPreset
 import com.example.ui.components.ABCompareBar
 import com.example.ui.components.BandTooltipDialog
+import com.example.ui.components.HearingComfortBadge
 import com.example.ui.components.HomeSpectrumVisualizer
 import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.IosSegmentedControl
 import com.example.ui.components.LiquidSlider
+import com.example.ui.components.SoundTargetCarousel
 import com.example.ui.components.SpatialStageVisualizer
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
@@ -126,6 +132,90 @@ fun SimpleModeScreen(
                 isPlaying = uiState.isPlaying,
                 reduceGlass = uiState.reduceGlass
             )
+        }
+
+        // Apple Health Style Hearing Comfort & Live dB SPL Meter
+        item {
+            HearingComfortBadge(
+                audioRms = uiState.audioRms,
+                isLimiterActive = uiState.comfortLimiterEnabled,
+                onToggleLimiter = { viewModel.toggleComfortLimiter() }
+            )
+        }
+
+        // Cupertino Sound Target Quick Presets Carousel
+        item {
+            SoundTargetCarousel(
+                targets = SoundTargetPreset.ALL,
+                activeTargetId = uiState.activeSoundTargetId,
+                onSelectTarget = { viewModel.applySoundTarget(it) },
+                onOpenSaveDialog = { viewModel.openSavePresetDialog() }
+            )
+        }
+
+        // User Custom Sound Snapshots
+        if (uiState.customPresets.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "MY SOUND SNAPSHOTS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.8.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        uiState.customPresets.forEach { preset ->
+                            val chipColor = try {
+                                val clean = preset.colorHex.removePrefix("#")
+                                val colorInt = clean.toLongOrNull(16) ?: 0x0A84FF
+                                Color(if (clean.length == 6) (0xFF000000 or colorInt) else colorInt)
+                            } catch (_: Exception) {
+                                GlassTokens.IosBlue
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .clip(GlassTokens.radiusPill)
+                                    .background(chipColor.copy(alpha = 0.16f))
+                                    .border(0.8.dp, chipColor.copy(alpha = 0.5f), GlassTokens.radiusPill)
+                                    .clickable { viewModel.applyCustomPreset(preset) }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
+                                        .background(chipColor)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = preset.name,
+                                    fontSize = 12.sp,
+                                    color = GlassTokens.TextPrimary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Delete preset",
+                                    tint = GlassTokens.TextMuted,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clickable { viewModel.deleteCustomPreset(preset.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Contextual tip (PRD 12.1 / FR-16)

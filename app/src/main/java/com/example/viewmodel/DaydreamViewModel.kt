@@ -8,11 +8,13 @@ import com.example.audio.AudioDeviceManager
 import com.example.audio.AudioEngine
 import com.example.audio.SystemAudioEffectManager
 import com.example.model.AudioComplaint
+import com.example.model.CustomSoundPreset
 import com.example.model.DemoTrack
 import com.example.model.OutputDevice
 import com.example.model.ParametricBand
 import com.example.model.PlainBand
 import com.example.model.PresetExportBundle
+import com.example.model.SoundTargetPreset
 import com.example.model.TimeMachinePreset
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -148,7 +150,47 @@ data class DaydreamUiState(
     val wallMaterial: com.example.audio.AudioEngine.WallMaterial = com.example.audio.AudioEngine.WallMaterial.PLASTER,
     val varispeedMode: Boolean = true,
     val speedAppliedAsRequested: Boolean = true,
-    val confirmedPlaybackSpeed: Float = 1.0f
+    val confirmedPlaybackSpeed: Float = 1.0f,
+
+    // Sound Targets & Custom Presets Bank
+    val activeSoundTargetId: String? = null,
+    val customPresets: List<CustomSoundPreset> = listOf(
+        CustomSoundPreset(
+            id = "preset_warm_bass",
+            name = "Warm Vinyl Bass",
+            colorHex = "#FF9F0A",
+            eqGains = mapOf(
+                PlainBand.RUMBLE to 3f,
+                PlainBand.WARMTH to 2f,
+                PlainBand.BODY to 0.5f,
+                PlainBand.CLARITY to 1f,
+                PlainBand.AIR to 2f
+            ),
+            spacePercent = 40f,
+            punchPercent = 35f,
+            clarityPercent = 20f
+        ),
+        CustomSoundPreset(
+            id = "preset_crisp_vocal",
+            name = "Intimate Vocal",
+            colorHex = "#0A84FF",
+            eqGains = mapOf(
+                PlainBand.RUMBLE to -2f,
+                PlainBand.WARMTH to 0f,
+                PlainBand.BODY to 1.5f,
+                PlainBand.CLARITY to 4f,
+                PlainBand.AIR to 3f
+            ),
+            spacePercent = 25f,
+            punchPercent = 20f,
+            clarityPercent = 45f
+        )
+    ),
+    val showSavePresetDialog: Boolean = false,
+
+    // Smart Device Routing & Hearing Comfort
+    val autoSwitchDeviceProfiles: Boolean = true,
+    val comfortLimiterEnabled: Boolean = false
 )
 
 class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
@@ -254,7 +296,11 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             deviceManager.deviceChangePrompt.collect { promptDevice ->
-                _uiState.update { it.copy(devicePrompt = promptDevice) }
+                if (promptDevice != null && _uiState.value.autoSwitchDeviceProfiles) {
+                    setOutputDevice(promptDevice)
+                } else {
+                    _uiState.update { it.copy(devicePrompt = promptDevice) }
+                }
             }
         }
 
@@ -920,6 +966,125 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     fun dismissDevicePrompt() {
         deviceManager.clearDevicePrompt()
         _uiState.update { it.copy(devicePrompt = null) }
+    }
+
+    // Sound Targets (Studio Target Curves)
+    fun applySoundTarget(target: SoundTargetPreset) {
+        val updatedEq = mapOf(
+            PlainBand.RUMBLE to target.rumbleDb,
+            PlainBand.WARMTH to target.warmthDb,
+            PlainBand.BODY to target.bodyDb,
+            PlainBand.CLARITY to target.clarityDb,
+            PlainBand.AIR to target.airDb
+        )
+        audioEngine.eqGains.putAll(updatedEq)
+        systemEffects.updatePlainEqGains(updatedEq)
+
+        audioEngine.spaceAmount = target.spacePercent
+        systemEffects.updateSpace(target.spacePercent, _uiState.value.isMonoDetected)
+
+        audioEngine.punchAmount = target.punchPercent
+        systemEffects.updatePunch(target.punchPercent)
+
+        audioEngine.clarityMacroAmount = target.clarityPercent
+        audioEngine.updateDspCoefficients()
+
+        _uiState.update {
+            it.copy(
+                activeSoundTargetId = target.id,
+                activePresetId = null,
+                eqGains = updatedEq,
+                spacePercent = target.spacePercent,
+                punchPercent = target.punchPercent,
+                clarityMacroPercent = target.clarityPercent,
+                notificationMessage = "${target.iconEmoji} Target Applied: ${target.title}"
+            )
+        }
+    }
+
+    // User Custom Presets Bank
+    fun openSavePresetDialog() {
+        _uiState.update { it.copy(showSavePresetDialog = true) }
+    }
+
+    fun closeSavePresetDialog() {
+        _uiState.update { it.copy(showSavePresetDialog = false) }
+    }
+
+    fun saveCustomPreset(name: String, colorHex: String) {
+        val cleanName = name.trim().ifEmpty { "My Custom Sound" }
+        val newPreset = CustomSoundPreset(
+            id = "preset_${System.currentTimeMillis()}",
+            name = cleanName,
+            colorHex = colorHex,
+            eqGains = _uiState.value.eqGains.toMap(),
+            spacePercent = _uiState.value.spacePercent,
+            punchPercent = _uiState.value.punchPercent,
+            clarityPercent = _uiState.value.clarityMacroPercent
+        )
+        val updatedList = listOf(newPreset) + _uiState.value.customPresets
+        _uiState.update {
+            it.copy(
+                customPresets = updatedList,
+                showSavePresetDialog = false,
+                notificationMessage = "Saved preset: $cleanName"
+            )
+        }
+    }
+
+    fun applyCustomPreset(preset: CustomSoundPreset) {
+        audioEngine.eqGains.putAll(preset.eqGains)
+        systemEffects.updatePlainEqGains(preset.eqGains)
+
+        audioEngine.spaceAmount = preset.spacePercent
+        systemEffects.updateSpace(preset.spacePercent, _uiState.value.isMonoDetected)
+
+        audioEngine.punchAmount = preset.punchPercent
+        systemEffects.updatePunch(preset.punchPercent)
+
+        audioEngine.clarityMacroAmount = preset.clarityPercent
+        audioEngine.updateDspCoefficients()
+
+        _uiState.update {
+            it.copy(
+                activeSoundTargetId = null,
+                activePresetId = null,
+                eqGains = preset.eqGains,
+                spacePercent = preset.spacePercent,
+                punchPercent = preset.punchPercent,
+                clarityMacroPercent = preset.clarityPercent,
+                notificationMessage = "Loaded preset: ${preset.name}"
+            )
+        }
+    }
+
+    fun deleteCustomPreset(id: String) {
+        val updated = _uiState.value.customPresets.filterNot { it.id == id }
+        _uiState.update { it.copy(customPresets = updated) }
+    }
+
+    fun toggleComfortLimiter() {
+        val newVal = !_uiState.value.comfortLimiterEnabled
+        val targetCeiling = if (newVal) -2.0f else -0.5f
+        audioEngine.limiterCeilingDb = targetCeiling
+        audioEngine.updateDspCoefficients()
+        _uiState.update {
+            it.copy(
+                comfortLimiterEnabled = newVal,
+                limiterCeilingDb = targetCeiling,
+                notificationMessage = if (newVal) "🛡️ Hearing Comfort Limiter ON (-2.0 dB Peak)" else "Comfort Limiter Disabled"
+            )
+        }
+    }
+
+    fun toggleAutoSwitchDeviceProfiles() {
+        val newVal = !_uiState.value.autoSwitchDeviceProfiles
+        _uiState.update {
+            it.copy(
+                autoSwitchDeviceProfiles = newVal,
+                notificationMessage = if (newVal) "Auto-Switch Device Profiles ON" else "Auto-Switch Device Profiles OFF"
+            )
+        }
     }
 
     // Preset JSON Serialization & Export / Import (PRD 6.2 & FR-12)

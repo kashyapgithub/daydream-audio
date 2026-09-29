@@ -47,6 +47,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.SoundTargetPreset
 import com.example.ui.components.ABCompareBar
 import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
@@ -54,6 +55,7 @@ import com.example.ui.components.IosSegmentedControl
 import com.example.ui.components.LedCompressionMeter
 import com.example.ui.components.LiquidSlider
 import com.example.ui.components.ParametricEqCurveVisualizer
+import com.example.ui.components.SoundTargetCarousel
 import com.example.ui.components.SpatialStageVisualizer
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
@@ -112,6 +114,16 @@ fun AdvancedModeScreen(
             )
         }
 
+        // Cupertino Sound Target Quick Presets Carousel
+        item {
+            SoundTargetCarousel(
+                targets = SoundTargetPreset.ALL,
+                activeTargetId = uiState.activeSoundTargetId,
+                onSelectTarget = { viewModel.applySoundTarget(it) },
+                onOpenSaveDialog = { viewModel.openSavePresetDialog() }
+            )
+        }
+
         // 10-Band Independent Parametric EQ (Apple Inset Grouped Section)
         item {
             IosSectionHeader(
@@ -126,9 +138,11 @@ fun AdvancedModeScreen(
                     .padding(16.dp)
             ) {
                 Column {
-                    // Logic Pro Style 10-Band Parametric Transfer Response Oscilloscope
+                    // Logic Pro Style 10-Band Parametric Transfer Response Oscilloscope with Live Dual RTA
                     ParametricEqCurveVisualizer(
                         bands = uiState.advancedBands,
+                        spectrum = uiState.spectrum,
+                        isPlaying = uiState.isPlaying,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
