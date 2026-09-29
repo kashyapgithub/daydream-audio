@@ -52,6 +52,7 @@ import com.example.ui.components.AnalogCassetteDeck
 import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.LiquidSlider
+import com.example.ui.components.VinylTurntableDeck
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
@@ -288,6 +289,22 @@ fun TimeMachineScreen(
                         color = GlassTokens.TextSecondary,
                         lineHeight = 17.sp
                     )
+
+                    if (isActive && preset.id == "70s") {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        VinylTurntableDeck(
+                            isPlaying = uiState.isPlaying,
+                            trackTitle = uiState.currentTrack?.title,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    } else if (isActive && preset.id == "80s") {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        AnalogCassetteDeck(
+                            isPlaying = uiState.isPlaying,
+                            audioRms = uiState.audioRms,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 

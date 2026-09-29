@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PlainBand
 import com.example.ui.components.ABCompareBar
+import com.example.ui.components.EarActivityRings
 import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
 import com.example.ui.theme.GlassTokens
@@ -84,24 +85,39 @@ fun GoldenEarScreen(
             }
         }
 
-        // Apple Fitness-Style Metric Cards (Score, Streak, Rank)
+        // Apple Fitness-Style Metric Cards with Activity Rings (Score, Streak, Rank)
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .iosInsetGroupedCard(uiState.reduceGlass)
-                    .padding(vertical = 14.dp, horizontal = 8.dp)
+                    .padding(vertical = 12.dp, horizontal = 14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    StatBox(title = "SCORE", value = "${uiState.earTrainerScore}", unit = "pts", tint = GlassTokens.IosBlue)
-                    Box(modifier = Modifier.width(0.8.dp).height(32.dp).background(GlassTokens.IosSeparator))
-                    StatBox(title = "STREAK", value = "${uiState.earTrainerStreak}", unit = "🔥", tint = GlassTokens.IosOrange)
-                    Box(modifier = Modifier.width(0.8.dp).height(32.dp).background(GlassTokens.IosSeparator))
-                    StatBox(title = "RANK", value = uiState.earTrainerLevel, unit = "", tint = GlassTokens.IosGreen)
+                    // Apple Watch Activity Rings
+                    EarActivityRings(
+                        score = uiState.earTrainerScore,
+                        streak = uiState.earTrainerStreak,
+                        challengesCompleted = uiState.earTrainerScore / 10
+                    )
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        StatBox(title = "SCORE", value = "${uiState.earTrainerScore}", unit = "pts", tint = GlassTokens.IosBlue)
+                        Box(modifier = Modifier.width(0.8.dp).height(32.dp).background(GlassTokens.IosSeparator))
+                        StatBox(title = "STREAK", value = "${uiState.earTrainerStreak}", unit = "🔥", tint = GlassTokens.IosOrange)
+                        Box(modifier = Modifier.width(0.8.dp).height(32.dp).background(GlassTokens.IosSeparator))
+                        StatBox(title = "RANK", value = uiState.earTrainerLevel, unit = "", tint = GlassTokens.IosGreen)
+                    }
                 }
             }
         }

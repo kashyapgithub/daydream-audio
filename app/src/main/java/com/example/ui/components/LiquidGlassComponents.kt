@@ -38,10 +38,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -66,6 +68,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -77,9 +80,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.DemoTrack
+import com.example.model.ParametricBand
 import com.example.model.PlainBand
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.floatingGlass
+import com.example.ui.theme.iosPressable
 import com.example.ui.theme.raisedGlass
 
 /**
@@ -554,6 +559,7 @@ fun NowPlayingGlassBar(
     onNextTrack: () -> Unit,
     spectrum: FloatArray,
     reduceGlass: Boolean = false,
+    onExpandSheet: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -576,10 +582,12 @@ fun NowPlayingGlassBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Track Info with Apple Squircle Album Art
+            // Track Info with Apple Squircle Album Art (Tap to expand Cupertino Now Playing Sheet)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onExpandSheet() }
             ) {
                 Box(
                     modifier = Modifier
@@ -1501,5 +1509,670 @@ fun AnalogCassetteDeck(
         }
     }
 }
+
+/**
+ * Logic Pro Style 10-Band Parametric EQ Transfer Curve Visualizer
+ * Real-time logarithmic frequency grid (20Hz - 20kHz, -12dB to +12dB)
+ * Renders the composite biquad filter transfer response with glowing neon curve & node markers.
+ */
+@Composable
+fun ParametricEqCurveVisualizer(
+    bands: List<ParametricBand>,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(130.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF101012))
+            .border(0.6.dp, Color(0xFF28282A), RoundedCornerShape(12.dp))
+            .padding(vertical = 8.dp, horizontal = 10.dp)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val centerY = h / 2f
+            val maxDb = 12f
+
+            // Helper: log frequency (20Hz..20000Hz) to X pixel coordinate
+            fun freqToX(hz: Float): Float {
+                val minF = 20.0
+                val maxF = 20000.0
+                val logNorm = (kotlin.math.log10(hz.toDouble() / minF) / kotlin.math.log10(maxF / minF)).toFloat()
+                return (logNorm * w).coerceIn(0f, w)
+            }
+
+            // Helper: dB (-12..+12) to Y pixel coordinate
+            fun dbToY(db: Float): Float {
+                val clampedDb = db.coerceIn(-maxDb, maxDb)
+                return centerY - (clampedDb / maxDb) * (centerY * 0.85f)
+            }
+
+            // 1. Grid lines: dB reference lines
+            val dBLines = listOf(12f, 6f, 0f, -6f, -12f)
+            for (db in dBLines) {
+                val y = dbToY(db)
+                val isZero = db == 0f
+                drawLine(
+                    color = if (isZero) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f),
+                    start = Offset(0f, y),
+                    end = Offset(w, y),
+                    strokeWidth = if (isZero) 1.dp.toPx() else 0.6.dp.toPx()
+                )
+            }
+
+            // Frequency reference vertical lines: 100Hz, 1kHz, 10kHz
+            val fGrid = listOf(100f, 1000f, 10000f)
+            for (f in fGrid) {
+                val x = freqToX(f)
+                drawLine(
+                    color = Color.White.copy(alpha = 0.08f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, h),
+                    strokeWidth = 0.6.dp.toPx()
+                )
+            }
+
+            // 2. Compute composite transfer function across 80 sample points
+            val numSamples = 80
+            val curvePoints = mutableListOf<Offset>()
+            for (i in 0..numSamples) {
+                val norm = i / numSamples.toFloat()
+                val minF = 20.0
+                val maxF = 20000.0
+                val f = (minF * kotlin.math.pow(maxF / minF, norm.toDouble())).toFloat()
+
+                // Compute sum of bell filter gains at f
+                var totalGainDb = 0f
+                for (b in bands) {
+                    if (kotlin.math.abs(b.gainDb) > 0.05f) {
+                        val octDiff = kotlin.math.log2(f.toDouble() / b.hz.toDouble()).toFloat()
+                        val qFactor = b.q.coerceAtLeast(0.2f)
+                        val denom = 1f + (octDiff * qFactor * 2.2f) * (octDiff * qFactor * 2.2f)
+                        totalGainDb += b.gainDb / denom
+                    }
+                }
+                val px = norm * w
+                val py = dbToY(totalGainDb)
+                curvePoints.add(Offset(px, py))
+            }
+
+            // 3. Draw gradient area fill under the curve
+            if (curvePoints.isNotEmpty()) {
+                val fillPath = Path().apply {
+                    moveTo(curvePoints.first().x, centerY)
+                    for (pt in curvePoints) {
+                        lineTo(pt.x, pt.y)
+                    }
+                    lineTo(curvePoints.last().x, centerY)
+                    close()
+                }
+
+                drawPath(
+                    path = fillPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            GlassTokens.IosTeal.copy(alpha = 0.22f),
+                            GlassTokens.IosBlue.copy(alpha = 0.06f),
+                            Color.Transparent
+                        )
+                    )
+                )
+
+                // 4. Draw glowing neon curve line
+                val strokePath = Path().apply {
+                    moveTo(curvePoints.first().x, curvePoints.first().y)
+                    for (i in 1 until curvePoints.size) {
+                        val p0 = curvePoints[i - 1]
+                        val p1 = curvePoints[i]
+                        val midX = (p0.x + p1.x) / 2f
+                        val midY = (p0.y + p1.y) / 2f
+                        quadraticBezierTo(p0.x, p0.y, midX, midY)
+                    }
+                    lineTo(curvePoints.last().x, curvePoints.last().y)
+                }
+
+                drawPath(
+                    path = strokePath,
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(GlassTokens.IosBlue, GlassTokens.IosTeal, GlassTokens.IosGreen)
+                    ),
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+
+            // 5. Draw the 10 Band Node Markers
+            for (b in bands) {
+                val nodeX = freqToX(b.hz.toFloat())
+                val nodeY = dbToY(b.gainDb)
+                val isActive = kotlin.math.abs(b.gainDb) > 0.5f
+
+                // Outer halo glow
+                drawCircle(
+                    color = (if (isActive) GlassTokens.IosTeal else Color.White).copy(alpha = if (isActive) 0.35f else 0.12f),
+                    radius = if (isActive) 6.dp.toPx() else 4.dp.toPx(),
+                    center = Offset(nodeX, nodeY)
+                )
+                // Center solid node dot
+                drawCircle(
+                    color = if (isActive) GlassTokens.IosTeal else Color(0xFF8E8E93),
+                    radius = 3.dp.toPx(),
+                    center = Offset(nodeX, nodeY)
+                )
+            }
+        }
+
+        // Header overlay: Scale markers
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("+12 dB", fontSize = 9.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.SemiBold)
+            Text("LOGIC PRO TRANSFER RESPONSE", fontSize = 9.sp, color = GlassTokens.IosTeal, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Text("-12 dB", fontSize = 9.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/**
+ * Apple Watch Style Ear-Gym Activity Rings
+ * Three concentric neon rings representing Ear Trainer Score, Daily Streak, and Accuracy.
+ */
+@Composable
+fun EarActivityRings(
+    score: Int,
+    streak: Int,
+    challengesCompleted: Int,
+    modifier: Modifier = Modifier
+) {
+    val animatedScoreSweep by animateFloatAsState(
+        targetValue = ((score % 500) / 500f * 360f).coerceIn(15f, 360f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+        label = "score_ring_sweep"
+    )
+
+    val animatedStreakSweep by animateFloatAsState(
+        targetValue = ((streak / 5f) * 360f).coerceIn(15f, 360f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+        label = "streak_ring_sweep"
+    )
+
+    val animatedAccuracySweep by animateFloatAsState(
+        targetValue = (((challengesCompleted.coerceAtLeast(1)) / 10f) * 360f).coerceIn(15f, 360f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+        label = "accuracy_ring_sweep"
+    )
+
+    Box(
+        modifier = modifier.size(86.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+            val strokeW = 6.5.dp.toPx()
+            val center = Offset(size.width / 2f, size.height / 2f)
+
+            // Ring 1 (Outer): Score (Apple Cyan/Blue)
+            val r1 = (size.width / 2f) - strokeW / 2f
+            drawCircle(
+                color = GlassTokens.IosBlue.copy(alpha = 0.15f),
+                radius = r1,
+                style = Stroke(width = strokeW)
+            )
+            drawArc(
+                color = GlassTokens.IosBlue,
+                startAngle = -90f,
+                sweepAngle = animatedScoreSweep,
+                useCenter = false,
+                style = Stroke(width = strokeW, cap = StrokeCap.Round),
+                topLeft = Offset(center.x - r1, center.y - r1),
+                size = Size(r1 * 2f, r1 * 2f)
+            )
+
+            // Ring 2 (Middle): Streak (Apple Green)
+            val r2 = r1 - strokeW - 2.5.dp.toPx()
+            drawCircle(
+                color = GlassTokens.IosGreen.copy(alpha = 0.15f),
+                radius = r2,
+                style = Stroke(width = strokeW)
+            )
+            drawArc(
+                color = GlassTokens.IosGreen,
+                startAngle = -90f,
+                sweepAngle = animatedStreakSweep,
+                useCenter = false,
+                style = Stroke(width = strokeW, cap = StrokeCap.Round),
+                topLeft = Offset(center.x - r2, center.y - r2),
+                size = Size(r2 * 2f, r2 * 2f)
+            )
+
+            // Ring 3 (Inner): Accuracy / Challenges (Apple Coral Red)
+            val r3 = r2 - strokeW - 2.5.dp.toPx()
+            drawCircle(
+                color = GlassTokens.IosRed.copy(alpha = 0.15f),
+                radius = r3,
+                style = Stroke(width = strokeW)
+            )
+            drawArc(
+                color = GlassTokens.IosRed,
+                startAngle = -90f,
+                sweepAngle = animatedAccuracySweep,
+                useCenter = false,
+                style = Stroke(width = strokeW, cap = StrokeCap.Round),
+                topLeft = Offset(center.x - r3, center.y - r3),
+                size = Size(r3 * 2f, r3 * 2f)
+            )
+        }
+
+        // Center Icon
+        Icon(
+            imageVector = Icons.Default.Hearing,
+            contentDescription = "Ear Gym Rings",
+            tint = GlassTokens.IosBlue,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+/**
+ * Direct-Drive 33⅓ RPM Audiophile Vinyl Turntable
+ * Features a spinning 12" vinyl disc with microgroove sheen and pivoting chrome tonearm.
+ */
+@Composable
+fun VinylTurntableDeck(
+    isPlaying: Boolean,
+    trackTitle: String? = null,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "turntable_rotation_transition")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "vinyl_disc_rotation"
+    )
+
+    val tonearmAngle by animateFloatAsState(
+        targetValue = if (isPlaying) 23f else 0f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f),
+        label = "tonearm_pivot"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF141416))
+            .border(0.8.dp, Color(0xFF28282A), RoundedCornerShape(14.dp))
+            .padding(12.dp)
+    ) {
+        Column {
+            // Header: Turntable Info Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (isPlaying) Color(0xFF30D158) else Color(0xFF48484A))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "TECHNICS DIRECT-DRIVE • 33⅓ RPM",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF9F0A),
+                        letterSpacing = 0.8.sp
+                    )
+                }
+
+                Text(
+                    text = if (isPlaying) "STYLUS TRACKING" else "TONEARM RESTED",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isPlaying) GlassTokens.IosGreen else GlassTokens.TextMuted,
+                    letterSpacing = 0.5.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Turntable Platter & Disc Box
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF0C0C0D))
+                    .border(0.6.dp, Color(0xFF202022), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                    val w = size.width
+                    val h = size.height
+                    val platterCenter = Offset(w * 0.45f, h / 2f)
+                    val platterRadius = (h / 2f) - 4.dp.toPx()
+
+                    // 1. Brushed Aluminum Platter Rim
+                    drawCircle(
+                        color = Color(0xFF2C2C2E),
+                        radius = platterRadius + 2.dp.toPx(),
+                        center = platterCenter
+                    )
+
+                    // 2. Vinyl Record Outer Edge
+                    drawCircle(
+                        color = Color(0xFF101012),
+                        radius = platterRadius,
+                        center = platterCenter
+                    )
+
+                    // 3. Concentric Vinyl Grooves
+                    val grooveRadii = listOf(
+                        platterRadius * 0.92f,
+                        platterRadius * 0.84f,
+                        platterRadius * 0.76f,
+                        platterRadius * 0.68f,
+                        platterRadius * 0.60f
+                    )
+                    for (gr in grooveRadii) {
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.05f),
+                            radius = gr,
+                            center = platterCenter,
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                    }
+
+                    // 4. Center Record Label
+                    val labelRadius = platterRadius * 0.38f
+                    drawCircle(
+                        brush = Brush.sweepGradient(
+                            listOf(Color(0xFFE05A47), Color(0xFFFF9F0A), Color(0xFFE05A47)),
+                            center = platterCenter
+                        ),
+                        radius = labelRadius,
+                        center = platterCenter
+                    )
+
+                    // Spindle Hole
+                    drawCircle(
+                        color = Color(0xFF0C0C0D),
+                        radius = 4.dp.toPx(),
+                        center = platterCenter
+                    )
+
+                    // 5. Stylus Tonearm (top-right pivot)
+                    val pivot = Offset(w * 0.88f, h * 0.22f)
+                    // Tonearm base gimbal
+                    drawCircle(
+                        color = Color(0xFF48484A),
+                        radius = 8.dp.toPx(),
+                        center = pivot
+                    )
+                    drawCircle(
+                        color = Color(0xFFE5E5EA),
+                        radius = 4.dp.toPx(),
+                        center = pivot
+                    )
+
+                    // Arm angle math
+                    val armLength = w * 0.40f
+                    val angleRad = Math.toRadians((155.0 - tonearmAngle.toDouble())).toFloat()
+                    val cartridgeX = pivot.x + kotlin.math.cos(angleRad) * armLength
+                    val cartridgeY = pivot.y + kotlin.math.sin(angleRad) * armLength
+
+                    // Chrome Tonearm Tube
+                    drawLine(
+                        color = Color(0xFFE5E5EA),
+                        start = pivot,
+                        end = Offset(cartridgeX, cartridgeY),
+                        strokeWidth = 2.5.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+
+                    // Headshell / Phono Cartridge
+                    drawCircle(
+                        color = if (isPlaying) Color(0xFFFF453A) else Color(0xFF2C2C2E),
+                        radius = 3.5.dp.toPx(),
+                        center = Offset(cartridgeX, cartridgeY)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Subtitle Status
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = trackTitle ?: "70s Vinyl Acoustic Master",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = GlassTokens.TextPrimary
+                )
+                Text(
+                    text = "ANALOG PHONO PREAMP",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextMuted,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Apple Music Style Expandable Now Playing Modal Sheet
+ * Full-bleed artwork, Lossless badge, interactive timeline scrubber, and Cupertino transport controls.
+ */
+@Composable
+fun NowPlayingModalSheet(
+    track: DemoTrack?,
+    isPlaying: Boolean,
+    isBypassed: Boolean,
+    onTogglePlay: () -> Unit,
+    onNextTrack: () -> Unit,
+    onPreviousTrack: () -> Unit,
+    onToggleBypass: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+            .background(Color(0xFF161618))
+            .border(
+                0.8.dp,
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.05f))
+                ),
+                RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
+            )
+            .padding(horizontal = 24.dp, vertical = 12.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Dismiss Grabber Pill
+            Box(
+                modifier = Modifier
+                    .width(38.dp)
+                    .height(5.dp)
+                    .clip(GlassTokens.radiusPill)
+                    .background(Color(0xFF48484A))
+                    .clickable { onDismiss() }
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Large 180dp Album Art Squircle with Soft Glow
+            Box(
+                modifier = Modifier
+                    .size(180.dp)
+                    .clip(GlassTokens.radiusXl)
+                    .background(Color(0xFF242426))
+                    .border(1.dp, Color.White.copy(alpha = 0.20f), GlassTokens.radiusXl),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_daydream_logo),
+                    contentDescription = "Now Playing Artwork",
+                    modifier = Modifier.size(160.dp).clip(GlassTokens.radiusXl)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Track Title & Era
+            Text(
+                text = track?.title ?: "Daydream Lossless",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = GlassTokens.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = track?.era ?: "Audiophile Master Chain",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = GlassTokens.IosTeal
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Apple Lossless Audio Badge
+            Box(
+                modifier = Modifier
+                    .clip(GlassTokens.radiusPill)
+                    .background(Color(0xFF2C2C2E))
+                    .border(0.6.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusPill)
+                    .padding(horizontal = 10.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "LOSSLESS • 24-BIT / 96kHz ALAC",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextSecondary,
+                    letterSpacing = 0.6.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Audio Scrub Timeline Bar
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(GlassTokens.radiusPill)
+                        .background(Color(0xFF3A3A3C))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.42f)
+                            .height(4.dp)
+                            .clip(GlassTokens.radiusPill)
+                            .background(GlassTokens.IosBlue)
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("1:14", fontSize = 11.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.Medium)
+                    Text("-1:46", fontSize = 11.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Oversized Cupertino Transport Controls
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Previous Track
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .iosPressable { onPreviousTrack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous Track",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                // Play / Pause (Large Apple 64dp Pill)
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .iosPressable { onTogglePlay() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = "Play/Pause",
+                        tint = Color.Black,
+                        modifier = Modifier.size(34.dp)
+                    )
+                }
+
+                // Next Track
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .iosPressable { onNextTrack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next Track",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // AB Compare Capsule Switch inside Sheet
+            ABCompareBar(
+                isBypassed = isBypassed,
+                onToggle = onToggleBypass,
+                reduceGlass = false
+            )
+        }
+    }
+}
+
 
 

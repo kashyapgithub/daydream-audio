@@ -51,6 +51,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +69,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.audio.AudioProcessingService
 import com.example.audio.SystemAudioEffectManager
 import com.example.ui.components.NowPlayingGlassBar
+import com.example.ui.components.NowPlayingModalSheet
 import com.example.ui.components.SonicGlassBackground
 import com.example.ui.screens.AdvancedModeScreen
 import com.example.ui.screens.GoldenEarScreen
@@ -110,6 +114,8 @@ class MainActivity : ComponentActivity() {
                     reduceGlass = uiState.reduceGlass,
                     reduceMotion = uiState.reduceMotion
                 ) {
+                    var isNowPlayingSheetOpen by remember { mutableStateOf(false) }
+
                     if (!uiState.isOnboardingCompleted) {
                         OnboardingScreen(
                             viewModel = viewModel,
@@ -140,6 +146,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     spectrum = uiState.spectrum,
                                     reduceGlass = uiState.reduceGlass,
+                                    onExpandSheet = { isNowPlayingSheetOpen = true },
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
 
@@ -295,6 +302,44 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
+                            }
+
+                            // Cupertino Expandable Now Playing Modal Sheet
+                            AnimatedVisibility(
+                                visible = isNowPlayingSheetOpen,
+                                enter = slideInVertically(
+                                    initialOffsetY = { it },
+                                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f)
+                                ) + fadeIn(),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { it },
+                                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f)
+                                ) + fadeOut(),
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                            ) {
+                                NowPlayingModalSheet(
+                                    track = uiState.currentTrack,
+                                    isPlaying = uiState.isPlaying,
+                                    isBypassed = uiState.isBypassed,
+                                    onTogglePlay = { viewModel.togglePlayPause() },
+                                    onNextTrack = {
+                                        val nextIdx = ((uiState.currentTrack?.let {
+                                            viewModel.timeMachinePresets.indices.firstOrNull() ?: 0
+                                        } ?: 0) + 1) % 4
+                                        viewModel.selectTrack(nextIdx)
+                                    },
+                                    onPreviousTrack = {
+                                        val current = uiState.currentTrack?.let {
+                                            viewModel.timeMachinePresets.indices.firstOrNull() ?: 0
+                                        } ?: 0
+                                        val prevIdx = if (current > 0) current - 1 else 3
+                                        viewModel.selectTrack(prevIdx)
+                                    },
+                                    onToggleBypass = { viewModel.toggleBypassAB() },
+                                    onDismiss = { isNowPlayingSheetOpen = false }
+                                )
                             }
                         }
                     }

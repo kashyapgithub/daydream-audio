@@ -53,6 +53,7 @@ import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.IosSegmentedControl
 import com.example.ui.components.LedCompressionMeter
 import com.example.ui.components.LiquidSlider
+import com.example.ui.components.ParametricEqCurveVisualizer
 import com.example.ui.components.SpatialStageVisualizer
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
@@ -125,6 +126,14 @@ fun AdvancedModeScreen(
                     .padding(16.dp)
             ) {
                 Column {
+                    // Logic Pro Style 10-Band Parametric Transfer Response Oscilloscope
+                    ParametricEqCurveVisualizer(
+                        bands = uiState.advancedBands,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(bottom = 8.dp))
+
                     uiState.advancedBands.forEachIndexed { index, band ->
                         val formattedTitle = if (band.hz < 1000) "${band.hz}Hz • ${band.anchorLabel}" else "${band.hz / 1000}kHz • ${band.anchorLabel}"
 
