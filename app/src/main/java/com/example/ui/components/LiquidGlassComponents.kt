@@ -2557,11 +2557,14 @@ fun SavePresetDialog(
                     onValueChange = { presetName = it },
                     placeholder = { Text("e.g. Bass Sanctuary, Late Night Cans", color = GlassTokens.TextMuted, fontSize = 13.sp) },
                     singleLine = true,
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
-                        textColor = GlassTokens.TextPrimary,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = GlassTokens.TextPrimary,
+                        unfocusedTextColor = GlassTokens.TextPrimary,
                         cursorColor = GlassTokens.IosBlue,
-                        focusedBorderColor = GlassTokens.IosBlue,
-                        unfocusedBorderColor = Color(0xFF38383A)
+                        focusedIndicatorColor = GlassTokens.IosBlue,
+                        unfocusedIndicatorColor = Color(0xFF38383A),
+                        focusedContainerColor = Color(0xFF242426),
+                        unfocusedContainerColor = Color(0xFF1C1C1E)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
