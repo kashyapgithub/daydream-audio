@@ -192,7 +192,6 @@ fun SonicGlassBackground(
 }
 
 /**
-/**
  * Apple Control Center / Music Slider (OpenDesign Apple Design System & HIG)
  * Recessed track, pure white thumb with physical iOS elevation shadow, tabular figures, and SF Pro typography.
  */
