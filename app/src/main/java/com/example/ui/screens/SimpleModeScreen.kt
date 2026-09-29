@@ -48,6 +48,7 @@ import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.IosSegmentedControl
 import com.example.ui.components.LiquidSlider
+import com.example.ui.components.SpatialStageVisualizer
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
@@ -742,6 +743,14 @@ fun SimpleModeScreen(
                         warningText = if (uiState.isMonoDetected) "Mono input detected — Space capped at 35% to prevent phase cancellation" else null,
                         accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
+                    )
+
+                    // AirPods Pro Spatial Audio Soundstage Arc Visualizer
+                    SpatialStageVisualizer(
+                        spacePercent = uiState.spacePercent,
+                        hrtfProfile = uiState.hrtfProfile,
+                        isBypassed = uiState.isBypassed,
+                        modifier = Modifier.padding(vertical = 6.dp)
                     )
 
                     IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))

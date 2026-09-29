@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.TimeMachinePreset
 import com.example.ui.components.ABCompareBar
+import com.example.ui.components.AnalogCassetteDeck
 import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.LiquidSlider
@@ -146,6 +147,13 @@ fun TimeMachineScreen(
 
                     if (uiState.isVintageMode) {
                         IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                        // Vintage Analog Cassette Deck Animation
+                        AnalogCassetteDeck(
+                            isPlaying = uiState.isPlaying,
+                            audioRms = uiState.audioRms,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
 
                         // Wow & Flutter Slider (PRD 6.13)
                         LiquidSlider(

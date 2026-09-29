@@ -51,7 +51,9 @@ import com.example.ui.components.ABCompareBar
 import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.IosSegmentedControl
+import com.example.ui.components.LedCompressionMeter
 import com.example.ui.components.LiquidSlider
+import com.example.ui.components.SpatialStageVisualizer
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
@@ -173,6 +175,14 @@ fun AdvancedModeScreen(
                     .padding(16.dp)
             ) {
                 Column {
+                    // Studio Hardware LED Gain Reduction Meter
+                    LedCompressionMeter(
+                        thresholdDb = uiState.compThresholdDb,
+                        ratio = uiState.compRatio,
+                        audioRms = if (uiState.isPlaying) uiState.audioRms else 0.001f,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
                     LiquidSlider(
                         title = "Threshold (When it engages)",
                         value = uiState.compThresholdDb,
@@ -276,6 +286,16 @@ fun AdvancedModeScreen(
                         selectedIndex = selectedRoomIndex,
                         onSelect = { viewModel.setSpatialRoomType(roomTypes[it]) },
                         label = { it.replace("Intimate ", "").replace("Concert ", "") }
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // AirPods Pro Stereo Soundstage Arc
+                    SpatialStageVisualizer(
+                        spacePercent = uiState.spacePercent,
+                        hrtfProfile = uiState.hrtfProfile,
+                        isBypassed = uiState.isBypassed,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }

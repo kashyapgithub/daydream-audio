@@ -5,8 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,6 +17,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -179,33 +183,49 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            // Dynamic Island Notification Pill (Apple HIG)
+                            // Dynamic Island 2.0 (Apple Cupertino HIG)
                             AnimatedVisibility(
-                                visible = uiState.notificationMessage != null,
-                                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                                visible = uiState.notificationMessage != null || uiState.isPlaying,
+                                enter = slideInVertically(
+                                    initialOffsetY = { -it },
+                                    animationSpec = spring(dampingRatio = 0.78f, stiffness = 400f)
+                                ) + fadeIn(),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { -it },
+                                    animationSpec = spring(dampingRatio = 0.78f, stiffness = 400f)
+                                ) + fadeOut(),
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .padding(top = innerPadding.calculateTopPadding() + 4.dp)
                                     .padding(horizontal = 20.dp)
                             ) {
-                                uiState.notificationMessage?.let { msg ->
-                                    LaunchedEffect(msg) {
-                                        delay(3000)
-                                        viewModel.clearNotification()
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(GlassTokens.radiusPill)
-                                            .background(Color(0xFF161618))
-                                            .border(
-                                                0.8.dp,
-                                                Color.White.copy(alpha = 0.20f),
-                                                GlassTokens.radiusPill
+                                Box(
+                                    modifier = Modifier
+                                        .animateContentSize(
+                                            animationSpec = spring(
+                                                dampingRatio = 0.78f,
+                                                stiffness = 450f
                                             )
-                                            .padding(horizontal = 18.dp, vertical = 9.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        )
+                                        .clip(GlassTokens.radiusPill)
+                                        .background(Color(0xFF0D0D0E))
+                                        .border(
+                                            0.8.dp,
+                                            Color.White.copy(alpha = 0.16f),
+                                            GlassTokens.radiusPill
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                                ) {
+                                    if (uiState.notificationMessage != null) {
+                                        val msg = uiState.notificationMessage!!
+                                        LaunchedEffect(msg) {
+                                            delay(3000)
+                                            viewModel.clearNotification()
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
                                             Box(
                                                 modifier = Modifier
                                                     .size(7.dp)
@@ -219,6 +239,59 @@ class MainActivity : ComponentActivity() {
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = GlassTokens.TextPrimary
                                             )
+                                        }
+                                    } else if (uiState.isPlaying) {
+                                        // Cupertino Dynamic Island Live Audio Pill
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.clickable { viewModel.togglePlayPause() }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .clip(CircleShape)
+                                                    .background(GlassTokens.IosBlue.copy(alpha = 0.25f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.GraphicEq,
+                                                    contentDescription = null,
+                                                    tint = GlassTokens.IosBlue,
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                            }
+
+                                            Text(
+                                                text = uiState.currentTrack?.title ?: "Daydream Audio",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = GlassTokens.TextPrimary,
+                                                maxLines = 1,
+                                                modifier = Modifier.widthIn(max = 140.dp)
+                                            )
+
+                                            // 3-bar animated mini EQ waveform
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                verticalAlignment = Alignment.Bottom,
+                                                modifier = Modifier.height(12.dp)
+                                            ) {
+                                                val barHeights = listOf(
+                                                    ((uiState.spectrum.getOrElse(1) { 0.4f }) * 12f).coerceIn(3f, 12f),
+                                                    ((uiState.spectrum.getOrElse(3) { 0.7f }) * 12f).coerceIn(4f, 12f),
+                                                    ((uiState.spectrum.getOrElse(5) { 0.5f }) * 12f).coerceIn(3f, 12f)
+                                                )
+                                                barHeights.forEach { h ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .width(2.5.dp)
+                                                            .height(h.dp)
+                                                            .clip(RoundedCornerShape(1.dp))
+                                                            .background(GlassTokens.IosGreen)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }

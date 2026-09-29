@@ -1,17 +1,27 @@
 package com.example.ui.theme
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -217,6 +227,52 @@ fun Modifier.iosInsetGroupedCard(reduceGlass: Boolean = false): Modifier {
                 ),
                 GlassTokens.radiusLg
             )
+    }
+}
+
+// Apple iOS Spring Press Feedback for buttons, chips, and cards
+fun Modifier.iosPressable(
+    enabled: Boolean = true,
+    pressScale: Float = 0.965f,
+    onClick: () -> Unit
+): Modifier = composed {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && enabled) pressScale else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "ios_press_scale"
+    )
+    this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }.clickable(
+        interactionSource = interactionSource,
+        indication = null,
+        enabled = enabled,
+        onClick = onClick
+    )
+}
+
+fun Modifier.iosScaleOnPress(
+    interactionSource: MutableInteractionSource,
+    pressScale: Float = 0.965f
+): Modifier = composed {
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) pressScale else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "ios_scale_press"
+    )
+    this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
     }
 }
 

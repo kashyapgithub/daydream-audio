@@ -46,6 +46,7 @@ import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.IosSegmentedControl
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
+import com.example.ui.theme.iosPressable
 import com.example.viewmodel.DaydreamUiState
 import com.example.viewmodel.DaydreamViewModel
 
@@ -108,7 +109,7 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { viewModel.setOutputDevice(device) }
+                                .iosPressable { viewModel.setOutputDevice(device) }
                                 .padding(horizontal = 16.dp, vertical = 14.dp)
                                 .testTag("device_option_${device.name.lowercase()}"),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -139,7 +140,7 @@ fun SettingsScreen(
                             }
                         }
                         if (index < devices.size - 1) {
-                            IosRowSeparator(modifier = Modifier.padding(start = 48.dp))
+                            IosRowSeparator(modifier = Modifier.padding(start = 54.dp))
                         }
                     }
                 }
