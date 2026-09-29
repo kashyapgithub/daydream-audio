@@ -43,8 +43,13 @@ import com.example.model.OutputDevice
 import com.example.model.PlainBand
 import com.example.ui.components.ABCompareBar
 import com.example.ui.components.BandTooltipDialog
+import com.example.ui.components.HomeSpectrumVisualizer
+import com.example.ui.components.IosRowSeparator
+import com.example.ui.components.IosSectionHeader
+import com.example.ui.components.IosSegmentedControl
 import com.example.ui.components.LiquidSlider
 import com.example.ui.theme.GlassTokens
+import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
 import com.example.viewmodel.DaydreamUiState
 import com.example.viewmodel.DaydreamViewModel
@@ -61,42 +66,46 @@ fun SimpleModeScreen(
             .padding(paddingValues)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Header & Quick Action
+        // Apple Large Title Header (SF Pro Display Bold, -0.02em tracking)
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
                     Text(
                         text = "Daydream Audio",
-                        fontSize = 26.sp,
+                        fontSize = 30.sp,
                         fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
+                        color = GlassTokens.TextPrimary,
+                        letterSpacing = (-0.6).sp
                     )
                     Text(
                         text = "Sound the way you remember it",
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Normal,
                         color = GlassTokens.TextSecondary
                     )
                 }
 
-                // Wizard Diagnosis Button
+                // Apple System Blue Capsule Action
                 Button(
                     onClick = { viewModel.openWizardDialog() },
-                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
                     shape = GlassTokens.radiusPill,
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
                     modifier = Modifier.testTag("wizard_trigger_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -109,36 +118,29 @@ fun SimpleModeScreen(
             }
         }
 
-        // Prominent home-page spectrum visualizer (real 8-band data, see
-        // AudioEngine.computeSpectrumBands - previously only a tiny 6-bar
-        // strip existed, buried in the bottom Now Playing bar).
+        // Apple Music Lossless EQ Spectrum Visualizer
         item {
-            com.example.ui.components.HomeSpectrumVisualizer(
+            HomeSpectrumVisualizer(
                 spectrum = uiState.spectrum,
                 isPlaying = uiState.isPlaying,
                 reduceGlass = uiState.reduceGlass
             )
         }
 
-        // Contextual tip (PRD 12.1 / FR-16): surfaced exactly when it's actionable -
-        // global hook not active + currently on the one output route (built-in
-        // speaker) most likely to be the reason why, per confirmed real-world
-        // behavior of similar apps. Not shown otherwise, so it doesn't nag users
-        // for whom system-wide mode is already working or who are already on
-        // headphones/Bluetooth.
+        // Contextual tip (PRD 12.1 / FR-16)
         if (!uiState.isGlobalHookActive && uiState.currentDevice == OutputDevice.PHONE_SPEAKER) {
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .raisedGlass(uiState.reduceGlass)
+                        .iosInsetGroupedCard(uiState.reduceGlass)
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.Top) {
                         Icon(
                             imageVector = Icons.Default.Headphones,
                             contentDescription = null,
-                            tint = GlassTokens.AccentStart,
+                            tint = GlassTokens.IosBlue,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -168,20 +170,20 @@ fun SimpleModeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Device Profile Chip
+                // Device Profile Chip (Apple Inset Pill)
                 Row(
                     modifier = Modifier
                         .clip(GlassTokens.radiusPill)
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusPill)
+                        .background(GlassTokens.IosGroupedPrimary)
+                        .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusPill)
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Default.Headphones,
                         contentDescription = null,
-                        tint = GlassTokens.AccentStart,
-                        modifier = Modifier.size(16.dp)
+                        tint = GlassTokens.IosBlue,
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -192,23 +194,17 @@ fun SimpleModeScreen(
                     )
                 }
 
-                // System Audio Session Hook Status or Legacy Mode (PRD 8.0, 9.0 & FR-11)
+                // System Audio Session Hook Status (Apple Inset Pill)
                 Row(
                     modifier = Modifier
                         .clip(GlassTokens.radiusPill)
-                        .background(
-                            when {
-                                uiState.isLegacyMode -> GlassTokens.AccentStart.copy(alpha = 0.18f)
-                                uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe.copy(alpha = 0.15f)
-                                else -> Color.White.copy(alpha = 0.08f)
-                            }
-                        )
+                        .background(GlassTokens.IosGroupedPrimary)
                         .border(
-                            1.dp,
+                            0.8.dp,
                             when {
-                                uiState.isLegacyMode -> GlassTokens.AccentStart.copy(alpha = 0.6f)
-                                uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe.copy(alpha = 0.5f)
-                                else -> Color.White.copy(alpha = 0.15f)
+                                uiState.isLegacyMode -> GlassTokens.IosBlue.copy(alpha = 0.6f)
+                                uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.IosGreen.copy(alpha = 0.6f)
+                                else -> GlassTokens.IosSeparator
                             },
                             GlassTokens.radiusPill
                         )
@@ -218,27 +214,27 @@ fun SimpleModeScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
-                            .clip(GlassTokens.radiusPill)
+                            .size(7.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
                             .background(
                                 when {
-                                    uiState.isLegacyMode -> GlassTokens.AccentStart
-                                    uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe
-                                    else -> Color.White.copy(alpha = 0.4f)
+                                    uiState.isLegacyMode -> GlassTokens.IosBlue
+                                    uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.IosGreen
+                                    else -> Color(0xFF636366)
                                 }
                             )
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = when {
-                            uiState.isLegacyMode -> "Legacy Mode (In-App Player)"
+                            uiState.isLegacyMode -> "Legacy Player"
                             uiState.activeSystemSessions.isNotEmpty() -> "Hooked: ${uiState.activeSystemSessions.first()}"
-                            else -> "System Audio: Listening"
+                            else -> "System Audio: Idle"
                         },
                         fontSize = 12.sp,
                         color = when {
-                            uiState.isLegacyMode -> GlassTokens.AccentStart
-                            uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.AccentSafe
+                            uiState.isLegacyMode -> GlassTokens.IosBlue
+                            uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.IosGreen
                             else -> GlassTokens.TextSecondary
                         },
                         fontWeight = FontWeight.Medium
@@ -247,16 +243,59 @@ fun SimpleModeScreen(
             }
         }
 
-        // OEM Hooking Guidance Banner (PRD Section 9.0 & FR-11)
+        // OEM Hooking Guidance Banner (Apple Callout)
         if (uiState.activeSystemSessions.isEmpty() && !uiState.isLegacyMode) {
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(GlassTokens.radiusMd)
-                        .background(Color.White.copy(alpha = 0.05f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), GlassTokens.radiusMd)
-                        .padding(12.dp)
+                        .iosInsetGroupedCard(uiState.reduceGlass)
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                            Text(
+                                text = "External Audio Hooking",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "Enable 'Device Broadcast Status' in Spotify/YT Music. If OEM restrictions block routing, switch to Legacy In-App Player.",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        Button(
+                            onClick = { viewModel.toggleLegacyMode() },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosBlue.copy(alpha = 0.6f)),
+                            shape = GlassTokens.radiusPill,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("Legacy", fontSize = 12.sp, color = GlassTokens.IosBlue, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Output Device Change Prompt Banner (Apple Action Card)
+        if (uiState.devicePrompt != null) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(GlassTokens.radiusLg)
+                        .background(GlassTokens.IosGroupedPrimary)
+                        .border(1.dp, GlassTokens.IosBlue.copy(alpha = 0.6f), GlassTokens.radiusLg)
+                        .padding(14.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -265,75 +304,34 @@ fun SimpleModeScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                             Text(
-                                text = "💡 Listening for external audio...",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GlassTokens.TextPrimary
-                            )
-                            Text(
-                                text = "In Spotify/YT Music, turn ON 'Device Broadcast Status'. On Xiaomi/Samsung, switch to Legacy In-App Player.",
-                                fontSize = 11.sp,
-                                color = GlassTokens.TextSecondary
-                            )
-                        }
-                        Button(
-                            onClick = { viewModel.toggleLegacyMode() },
-                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart.copy(alpha = 0.25f)),
-                            shape = GlassTokens.radiusPill,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("Legacy", fontSize = 11.sp, color = GlassTokens.AccentStart, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Output Device Change Prompt Banner (PRD FR-10)
-        if (uiState.devicePrompt != null) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(GlassTokens.radiusMd)
-                        .background(GlassTokens.AccentStart.copy(alpha = 0.18f))
-                        .border(1.dp, GlassTokens.AccentStart, GlassTokens.radiusMd)
-                        .padding(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
                                 text = "🎧 Switch to ${uiState.devicePrompt.displayName}?",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.AccentStart
+                                color = GlassTokens.IosBlue
                             )
                             Text(
-                                text = "Audio output change detected. Tap to tune baseline Space & Punch.",
-                                fontSize = 11.sp,
-                                color = GlassTokens.TextSecondary
+                                text = "Audio output change detected. Tap to auto-tune baseline Space & Punch.",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
                             )
                         }
-                        Row {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Button(
                                 onClick = { viewModel.setOutputDevice(uiState.devicePrompt) },
-                                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
                                 shape = GlassTokens.radiusPill,
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text("Tune", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Tune", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                             Spacer(modifier = Modifier.width(6.dp))
                             Button(
                                 onClick = { viewModel.dismissDevicePrompt() },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                             ) {
-                                Text("Dismiss", fontSize = 12.sp, color = GlassTokens.TextMuted)
+                                Text("Dismiss", fontSize = 12.sp, color = GlassTokens.TextSecondary)
                             }
                         }
                     }
@@ -341,15 +339,14 @@ fun SimpleModeScreen(
             }
         }
 
-        // Active Wizard Fix Banner (if applied)
+        // Active Wizard Fix Banner (Apple Inset Card)
         if (uiState.lastWizardFixSummary != null) {
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(GlassTokens.radiusMd)
-                        .background(GlassTokens.AccentStart.copy(alpha = 0.15f))
-                        .border(1.dp, GlassTokens.AccentStart.copy(alpha = 0.4f), GlassTokens.radiusMd)
+                        .iosInsetGroupedCard(uiState.reduceGlass)
+                        .border(0.8.dp, GlassTokens.IosBlue.copy(alpha = 0.4f), GlassTokens.radiusLg)
                         .padding(14.dp)
                 ) {
                     Row(
@@ -357,16 +354,16 @@ fun SimpleModeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                             Text(
                                 text = "✨ Active Fix: ${uiState.lastAppliedComplaint?.label ?: "Smart Tune"}",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.AccentStart
+                                color = GlassTokens.IosBlue
                             )
                             Text(
                                 text = uiState.lastWizardFixSummary,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = GlassTokens.TextSecondary,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
@@ -384,7 +381,7 @@ fun SimpleModeScreen(
             }
         }
 
-        // Prominent A/B Instant Compare Bar (PRD FR-3)
+        // Prominent Apple A/B Instant Compare Bar (PRD FR-3)
         item {
             ABCompareBar(
                 isBypassed = uiState.isBypassed,
@@ -393,22 +390,22 @@ fun SimpleModeScreen(
             )
         }
 
-        // Mono Warning Banner (PRD FR-4)
+        // Mono Warning Banner (Apple Caution Callout)
         item {
             AnimatedVisibility(visible = uiState.showMonoWarning) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(GlassTokens.radiusMd)
-                        .background(GlassTokens.AccentWarning.copy(alpha = 0.15f))
-                        .border(1.dp, GlassTokens.AccentWarning.copy(alpha = 0.4f), GlassTokens.radiusMd)
-                        .padding(12.dp)
+                        .clip(GlassTokens.radiusLg)
+                        .background(GlassTokens.IosGroupedPrimary)
+                        .border(0.8.dp, GlassTokens.IosOrange.copy(alpha = 0.5f), GlassTokens.radiusLg)
+                        .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Warning,
                             contentDescription = null,
-                            tint = GlassTokens.AccentWarning,
+                            tint = GlassTokens.IosOrange,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -417,12 +414,13 @@ fun SimpleModeScreen(
                                 text = "Mono Recording Detected",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.AccentWarning
+                                color = GlassTokens.IosOrange
                             )
                             Text(
                                 text = "Virtualizer 'Space' is capped. Expanding mono audio too far creates phase cancellation and hollow vocals.",
-                                fontSize = 11.sp,
-                                color = GlassTokens.TextSecondary
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
                             )
                         }
                     }
@@ -430,22 +428,18 @@ fun SimpleModeScreen(
             }
         }
 
-        // Lofi Mode Macro Card
+        // Apple Section 1: Lofi Mode & Tempo Deceleration
         item {
+            IosSectionHeader(
+                title = "Lofi Mode & Tempo",
+                subtitle = "Algorithmic tape deceleration & warm acoustic flutter"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(GlassTokens.radiusMd)
-                    .background(
-                        if (uiState.isLofiMode) GlassTokens.AccentStart.copy(alpha = 0.20f)
-                        else Color.White.copy(alpha = 0.05f)
-                    )
-                    .border(
-                        1.dp,
-                        if (uiState.isLofiMode) GlassTokens.AccentStart else Color.White.copy(alpha = 0.12f),
-                        GlassTokens.radiusMd
-                    )
-                    .padding(14.dp)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
+                    .padding(16.dp)
             ) {
                 Column {
                     Row(
@@ -453,25 +447,26 @@ fun SimpleModeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "☕ Lofi Mode",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (uiState.isLofiMode) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                    text = "Lofi Mode",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = GlassTokens.TextPrimary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Box(
                                     modifier = Modifier
                                         .clip(GlassTokens.radiusPill)
                                         .background(
-                                            if (uiState.isLofiMode) GlassTokens.AccentStart.copy(alpha = 0.25f)
+                                            if (uiState.isLofiMode) GlassTokens.IosOrange.copy(alpha = 0.20f)
                                             else Color.White.copy(alpha = 0.08f)
                                         )
                                         .border(
-                                            1.dp,
-                                            if (uiState.isLofiMode) GlassTokens.AccentStart else Color.White.copy(alpha = 0.15f),
+                                            0.6.dp,
+                                            if (uiState.isLofiMode) GlassTokens.IosOrange.copy(alpha = 0.6f)
+                                            else GlassTokens.IosSeparator,
                                             GlassTokens.radiusPill
                                         )
                                         .padding(horizontal = 8.dp, vertical = 2.dp)
@@ -480,13 +475,13 @@ fun SimpleModeScreen(
                                         text = if (uiState.isLofiMode) "0.85x • Reverb • Warble" else "1-Tap Chill",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (uiState.isLofiMode) GlassTokens.AccentStart else GlassTokens.TextSecondary
+                                        color = if (uiState.isLofiMode) GlassTokens.IosOrange else GlassTokens.TextSecondary
                                     )
                                 }
                             }
                             Text(
                                 text = "Slowed tempo, dreamy algorithmic reverb, warm tape rolloff & subtle flutter",
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = GlassTokens.TextSecondary,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
@@ -497,82 +492,57 @@ fun SimpleModeScreen(
                             onCheckedChange = { viewModel.toggleLofiMode() },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor = GlassTokens.AccentStart
+                                checkedTrackColor = GlassTokens.IosGreen
                             ),
                             modifier = Modifier.testTag("lofi_mode_switch")
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Quick Playback Tempo selector chips
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(0.80f to "0.80x", 0.85f to "0.85x", 0.90f to "0.90x", 1.0f to "1.0x (Norm)", 1.15f to "1.15x").forEach { (speed, label) ->
-                            val isSelected = kotlin.math.abs(uiState.playbackSpeed - speed) < 0.02f
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(GlassTokens.radiusSm)
-                                    .background(
-                                        if (isSelected) GlassTokens.AccentStart.copy(alpha = 0.25f)
-                                        else Color.White.copy(alpha = 0.05f)
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (isSelected) GlassTokens.AccentStart else Color.White.copy(alpha = 0.10f),
-                                        GlassTokens.radiusSm
-                                    )
-                                    .clickable { viewModel.setPlaybackSpeed(speed) }
-                                    .padding(vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextPrimary
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = "PLAYBACK SPEED",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+
+                    val speeds = listOf(
+                        0.80f to "0.80x",
+                        0.85f to "0.85x",
+                        0.90f to "0.90x",
+                        1.0f to "1.0x",
+                        1.15f to "1.15x"
+                    )
+                    val selectedSpeedIndex = speeds.indexOfFirst { kotlin.math.abs(uiState.playbackSpeed - it.first) < 0.02f }
+                        .let { if (it >= 0) it else 3 }
+
+                    IosSegmentedControl(
+                        items = speeds,
+                        selectedIndex = selectedSpeedIndex,
+                        onSelect = { index -> viewModel.setPlaybackSpeed(speeds[index].first) },
+                        label = { it.second }
+                    )
                 }
             }
         }
 
-        // Card 1: Restoration & Noise Reduction (PRD 6.10 Tier 1)
+        // Apple Section 2: Analog Restoration
         item {
+            IosSectionHeader(
+                title = "Analog Restoration",
+                subtitle = "Eliminate tape hiss, vinyl crackle, and AC mains hum"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Analog Restoration",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GlassTokens.TextPrimary
-                            )
-                            Text(
-                                text = "Eliminates hiss, vinyl clicks, and power hum",
-                                fontSize = 12.sp,
-                                color = GlassTokens.TextSecondary
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
                     // Hiss Removal Slider
                     LiquidSlider(
                         title = "Hiss Removal",
@@ -583,12 +553,13 @@ fun SimpleModeScreen(
                         technicalValue = "High-Shelf Spectral Gate",
                         showTechnical = uiState.showTechnicalValues,
                         tipDescription = "Reduces tape hiss floor in quiet passages.",
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // De-Hum & De-Crackle Toggles (PRD FR-7: separate controls)
+                    // De-Hum & De-Crackle Toggles (Apple Grouped Rows)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -598,14 +569,14 @@ fun SimpleModeScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(GlassTokens.radiusSm)
-                                .background(Color.White.copy(alpha = if (uiState.deHumEnabled) 0.12f else 0.05f))
+                                .background(GlassTokens.IosGroupedSecondary)
                                 .border(
-                                    1.dp,
-                                    if (uiState.deHumEnabled) GlassTokens.AccentStart else Color.White.copy(alpha = 0.1f),
+                                    0.8.dp,
+                                    if (uiState.deHumEnabled) GlassTokens.IosBlue.copy(alpha = 0.5f) else GlassTokens.IosSeparator,
                                     GlassTokens.radiusSm
                                 )
                                 .clickable { viewModel.toggleDeHum() }
-                                .padding(10.dp)
+                                .padding(12.dp)
                                 .testTag("dehum_toggle")
                         ) {
                             Row(
@@ -616,9 +587,9 @@ fun SimpleModeScreen(
                                 Column {
                                     Text(
                                         text = "De-Hum",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (uiState.deHumEnabled) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (uiState.deHumEnabled) GlassTokens.IosBlue else GlassTokens.TextPrimary
                                     )
                                     Text(
                                         text = "50/60Hz notch",
@@ -631,7 +602,7 @@ fun SimpleModeScreen(
                                     onCheckedChange = { viewModel.toggleDeHum() },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Color.White,
-                                        checkedTrackColor = GlassTokens.AccentStart
+                                        checkedTrackColor = GlassTokens.IosGreen
                                     )
                                 )
                             }
@@ -642,14 +613,14 @@ fun SimpleModeScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(GlassTokens.radiusSm)
-                                .background(Color.White.copy(alpha = if (uiState.deCrackleEnabled) 0.12f else 0.05f))
+                                .background(GlassTokens.IosGroupedSecondary)
                                 .border(
-                                    1.dp,
-                                    if (uiState.deCrackleEnabled) GlassTokens.AccentStart else Color.White.copy(alpha = 0.1f),
+                                    0.8.dp,
+                                    if (uiState.deCrackleEnabled) GlassTokens.IosBlue.copy(alpha = 0.5f) else GlassTokens.IosSeparator,
                                     GlassTokens.radiusSm
                                 )
                                 .clickable { viewModel.toggleDeCrackle() }
-                                .padding(10.dp)
+                                .padding(12.dp)
                                 .testTag("decrackle_toggle")
                         ) {
                             Row(
@@ -660,9 +631,9 @@ fun SimpleModeScreen(
                                 Column {
                                     Text(
                                         text = "De-Crackle",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (uiState.deCrackleEnabled) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (uiState.deCrackleEnabled) GlassTokens.IosBlue else GlassTokens.TextPrimary
                                     )
                                     Text(
                                         text = "Vinyl pops",
@@ -675,93 +646,54 @@ fun SimpleModeScreen(
                                     onCheckedChange = { viewModel.toggleDeCrackle() },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Color.White,
-                                        checkedTrackColor = GlassTokens.AccentStart
+                                        checkedTrackColor = GlassTokens.IosGreen
                                     )
                                 )
                             }
                         }
                     }
 
-                    // Regional Mains Frequency Selector (PRD 8.3)
+                    // Regional Mains Frequency Selector (Apple Segmented Control)
                     AnimatedVisibility(visible = uiState.deHumEnabled) {
-                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                        Column(modifier = Modifier.padding(top = 12.dp)) {
                             Text(
-                                text = "Mains Frequency Notch",
+                                text = "MAINS FREQUENCY NOTCH",
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = GlassTokens.TextSecondary
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextSecondary,
+                                letterSpacing = 0.5.sp,
+                                modifier = Modifier.padding(bottom = 6.dp)
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                listOf(50 to "50Hz (EU/Asia/UK)", 60 to "60Hz (US/Americas)").forEach { (freq, label) ->
-                                    val isSelected = uiState.humFrequency == freq
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(GlassTokens.radiusSm)
-                                            .background(
-                                                if (isSelected) GlassTokens.AccentStart.copy(alpha = 0.22f)
-                                                else Color.White.copy(alpha = 0.05f)
-                                            )
-                                            .border(
-                                                1.dp,
-                                                if (isSelected) GlassTokens.AccentStart else Color.White.copy(alpha = 0.10f),
-                                                GlassTokens.radiusSm
-                                            )
-                                            .clickable { viewModel.setHumFrequency(freq) }
-                                            .padding(vertical = 6.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextPrimary
-                                        )
-                                    }
-                                }
-                            }
+                            val freqs = listOf(50 to "50Hz (EU/Asia/UK)", 60 to "60Hz (US/Americas)")
+                            val selectedFreqIndex = freqs.indexOfFirst { it.first == uiState.humFrequency }.let { if (it >= 0) it else 0 }
+                            IosSegmentedControl(
+                                items = freqs,
+                                selectedIndex = selectedFreqIndex,
+                                onSelect = { index -> viewModel.setHumFrequency(freqs[index].first) },
+                                label = { it.second }
+                            )
                         }
                     }
                 }
             }
         }
 
-        // Card 2: Plain-English Equalizer (PRD 6.1)
+        // Apple Section 3: Tone Shaper (5 Plain Bands)
         item {
+            IosSectionHeader(
+                title = "Tone Shaper",
+                subtitle = "5 plain-English bands — tap title for acoustic guidance"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Tone Shaper",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GlassTokens.TextPrimary
-                            )
-                            Text(
-                                text = "5 plain-English bands — tap any title for info",
-                                fontSize = 12.sp,
-                                color = GlassTokens.TextSecondary
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    PlainBand.entries.forEach { band ->
+                    val bands = PlainBand.entries.toList()
+                    bands.forEachIndexed { index, band ->
                         val gain = uiState.eqGains[band] ?: 0f
                         LiquidSlider(
                             title = band.title,
@@ -772,37 +704,32 @@ fun SimpleModeScreen(
                             technicalValue = band.frequencyRange,
                             showTechnical = uiState.showTechnicalValues,
                             onInfoClick = { viewModel.showTooltip(band) },
+                            accentColor = GlassTokens.IosBlue,
                             reduceGlass = uiState.reduceGlass
                         )
+                        if (index < bands.size - 1) {
+                            IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
+                        }
                     }
                 }
             }
         }
 
-        // Card 3: Dynamics, Space & Loudness (PRD 6.3, 6.6, 6.8, 6.9)
+        // Apple Section 4: Acoustic Presence & Space
         item {
+            IosSectionHeader(
+                title = "Acoustic Presence & Space",
+                subtitle = "Spatial width, dynamic compression & loudness booster"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Text(
-                        text = "Acoustic Presence & Space",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                    Text(
-                        text = "Compressor punch, spatial width & volume booster",
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Space (Virtualizer) — PRD FR-4: Auto-detect mono and cap at 35%
+                    // Space (Virtualizer)
                     LiquidSlider(
                         title = "Space (Width)",
                         value = uiState.spacePercent,
@@ -813,8 +740,11 @@ fun SimpleModeScreen(
                         showTechnical = uiState.showTechnicalValues,
                         isWarning = uiState.isMonoDetected,
                         warningText = if (uiState.isMonoDetected) "Mono input detected — Space capped at 35% to prevent phase cancellation" else null,
+                        accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Punch (Dynamics Compressor)
                     LiquidSlider(
@@ -825,8 +755,11 @@ fun SimpleModeScreen(
                         unit = "%",
                         technicalValue = "RMS Soft-Knee Compressor",
                         showTechnical = uiState.showTechnicalValues,
+                        accentColor = GlassTokens.IosOrange,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Clarity Macro (Presence exciter)
                     LiquidSlider(
@@ -837,8 +770,11 @@ fun SimpleModeScreen(
                         unit = "%",
                         technicalValue = "Multiband Harmonic Exciter",
                         showTechnical = uiState.showTechnicalValues,
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Loudness (Volume Boost with auto limiter, PRD FR-5)
                     LiquidSlider(
@@ -851,61 +787,50 @@ fun SimpleModeScreen(
                         showTechnical = uiState.showTechnicalValues,
                         isWarning = uiState.loudnessPercent > 75f,
                         warningText = if (uiState.loudnessPercent > 75f) "Past 75% loudness trades clarity for output" else "Soft brickwall limiter active (no clipping)",
-                        accentColor = if (uiState.loudnessPercent > 75f) GlassTokens.AccentWarning else GlassTokens.AccentSafe,
+                        accentColor = if (uiState.loudnessPercent > 75f) GlassTokens.IosOrange else GlassTokens.IosGreen,
                         reduceGlass = uiState.reduceGlass
                     )
                 }
             }
         }
 
-        // Card 4: Atmospheric Reverb & Echo Delay
+        // Apple Section 5: Atmospheric Reverb & Echo
         item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IosSectionHeader(
+                    title = "Atmospheric Reverb & Echo",
+                    subtitle = "Algorithmic room reverb and tape delay repeats",
+                    modifier = Modifier.weight(1f)
+                )
+                if (uiState.reverbWetPercent > 0f || uiState.echoWetPercent > 0f || uiState.playbackSpeed != 1.0f) {
+                    IconButton(
+                        onClick = {
+                            viewModel.setReverbWet(0f)
+                            viewModel.setEchoWet(0f)
+                            viewModel.setPlaybackSpeed(1.0f)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.RestartAlt,
+                            contentDescription = "Reset Reverb & Echo",
+                            tint = GlassTokens.IosBlue,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Atmospheric Reverb & Echo",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GlassTokens.TextPrimary
-                            )
-                            Text(
-                                text = "Algorithmic room reverb and tape delay repeats",
-                                fontSize = 12.sp,
-                                color = GlassTokens.TextSecondary
-                            )
-                        }
-
-                        if (uiState.reverbWetPercent > 0f || uiState.echoWetPercent > 0f || uiState.playbackSpeed != 1.0f) {
-                            IconButton(
-                                onClick = {
-                                    viewModel.setReverbWet(0f)
-                                    viewModel.setEchoWet(0f)
-                                    viewModel.setPlaybackSpeed(1.0f)
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.RestartAlt,
-                                    contentDescription = "Reset Reverb & Echo",
-                                    tint = GlassTokens.TextSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
                     // Reverb Wet Slider
                     LiquidSlider(
                         title = "Reverb (Space Decay)",
@@ -915,8 +840,11 @@ fun SimpleModeScreen(
                         unit = "%",
                         technicalValue = "Freeverb 8-Comb + 4-Allpass",
                         showTechnical = uiState.showTechnicalValues,
+                        accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Reverb Room Size Slider
                     LiquidSlider(
@@ -927,10 +855,11 @@ fun SimpleModeScreen(
                         unit = "%",
                         technicalValue = "Comb Feedback Gain",
                         showTechnical = uiState.showTechnicalValues,
+                        accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Echo / Delay Wet Slider
                     LiquidSlider(
@@ -941,8 +870,11 @@ fun SimpleModeScreen(
                         unit = "%",
                         technicalValue = "Stereo Ping-Pong Delay Line",
                         showTechnical = uiState.showTechnicalValues,
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Echo Time Slider (ms)
                     LiquidSlider(
@@ -953,8 +885,11 @@ fun SimpleModeScreen(
                         unit = "ms",
                         technicalValue = "${uiState.echoTimeMs}ms delay tap",
                         showTechnical = uiState.showTechnicalValues,
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     // Echo Feedback Slider (%)
                     LiquidSlider(
@@ -965,20 +900,7 @@ fun SimpleModeScreen(
                         unit = "%",
                         technicalValue = "Tape-Damped Loop",
                         showTechnical = uiState.showTechnicalValues,
-                        reduceGlass = uiState.reduceGlass
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // Playback Speed Slider
-                    LiquidSlider(
-                        title = "Playback Tempo",
-                        value = uiState.playbackSpeed,
-                        onValueChange = { viewModel.setPlaybackSpeed(it) },
-                        valueRange = 0.5f..1.5f,
-                        unit = "x",
-                        technicalValue = "Sonic Time-Stretch",
-                        showTechnical = uiState.showTechnicalValues,
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
                 }

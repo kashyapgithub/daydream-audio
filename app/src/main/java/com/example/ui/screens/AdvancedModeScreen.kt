@@ -48,14 +48,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.ABCompareBar
+import com.example.ui.components.IosRowSeparator
+import com.example.ui.components.IosSectionHeader
+import com.example.ui.components.IosSegmentedControl
 import com.example.ui.components.LiquidSlider
 import com.example.ui.theme.GlassTokens
+import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
 import com.example.viewmodel.DaydreamUiState
 import com.example.viewmodel.DaydreamViewModel
 
 /**
- * Advanced Mode Screen (PRD 6.2):
+ * Advanced Mode Screen (PRD 6.2 & Apple Pro App HIG):
  * - 10-Band Independent Parametric EQ with individual Q (0.3 to 10.0) and gain (-12 to +12dB)
  * - True parametric dynamics controls: Threshold, Ratio, Attack, Release
  * - HRTF Profile selection
@@ -75,35 +79,28 @@ fun AdvancedModeScreen(
             .padding(paddingValues)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Header
+        // Apple Pro Studio Large Title Header
         item {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = null,
-                        tint = GlassTokens.AccentStart,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Advanced Studio Chain",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                }
+            Column(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) {
                 Text(
-                    text = "10-Band Parametric EQ & Dynamics Compressor with independent Q and gain",
+                    text = "Studio Master Chain",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextPrimary,
+                    letterSpacing = (-0.6).sp
+                )
+                Text(
+                    text = "10-Band Parametric EQ, RMS Dynamics & Freeverb DSP",
                     fontSize = 13.sp,
-                    color = GlassTokens.TextSecondary
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
 
-        // Prominent A/B Bar (<50ms instantaneous switch, PRD FR-3)
+        // Prominent Apple A/B Instant Compare Bar (PRD FR-3)
         item {
             ABCompareBar(
                 isBypassed = uiState.isBypassed,
@@ -112,30 +109,21 @@ fun AdvancedModeScreen(
             )
         }
 
-        // 10-Band Independent Parametric EQ Grid (PRD 6.2 & 8.3)
+        // 10-Band Independent Parametric EQ (Apple Inset Grouped Section)
         item {
+            IosSectionHeader(
+                title = "10-Band Parametric EQ",
+                subtitle = "Independent center frequencies with user-adjustable Q factor (0.3 to 10.0)"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Text(
-                        text = "10-Band Parametric EQ",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                    Text(
-                        text = "Independent center frequencies with user-adjustable Q factor (0.3 to 10.0)",
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    uiState.advancedBands.forEach { band ->
+                    uiState.advancedBands.forEachIndexed { index, band ->
                         val formattedTitle = if (band.hz < 1000) "${band.hz}Hz • ${band.anchorLabel}" else "${band.hz / 1000}kHz • ${band.anchorLabel}"
 
                         Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -147,10 +135,10 @@ fun AdvancedModeScreen(
                                 unit = "dB",
                                 technicalValue = "Q=${String.format("%.1f", band.q)}",
                                 showTechnical = true,
+                                accentColor = GlassTokens.IosBlue,
                                 reduceGlass = uiState.reduceGlass
                             )
 
-                            // Optional Q-factor slider
                             LiquidSlider(
                                 title = "  ↳ Resonance (Q)",
                                 value = band.q,
@@ -158,38 +146,33 @@ fun AdvancedModeScreen(
                                 valueRange = 0.3f..10.0f,
                                 unit = "Q",
                                 showTechnical = false,
-                                accentColor = GlassTokens.AccentStart.copy(alpha = 0.8f),
+                                accentColor = GlassTokens.IosTeal,
                                 reduceGlass = uiState.reduceGlass
                             )
+                        }
+
+                        if (index < uiState.advancedBands.size - 1) {
+                            IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
                         }
                     }
                 }
             }
         }
 
-        // Dynamics Compressor Controls (PRD 6.2 & 8.3)
+        // Dynamics Compressor Controls (Apple Inset Grouped Section)
         item {
+            IosSectionHeader(
+                title = "Dynamics Processor",
+                subtitle = "RMS soft-knee compressor with manual threshold & ratio"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Text(
-                        text = "Dynamics Processing (RMS Compressor)",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                    Text(
-                        text = "Manual threshold, ratio, attack, and release parameters",
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
                     LiquidSlider(
                         title = "Threshold (When it engages)",
                         value = uiState.compThresholdDb,
@@ -197,8 +180,11 @@ fun AdvancedModeScreen(
                         valueRange = -40f..0f,
                         unit = "dB",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosOrange,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
                         title = "Compression Ratio (Intensity)",
@@ -207,8 +193,11 @@ fun AdvancedModeScreen(
                         valueRange = 1f..10f,
                         unit = ":1",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosOrange,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
                         title = "Attack Time (Speed of clamp)",
@@ -217,8 +206,11 @@ fun AdvancedModeScreen(
                         valueRange = 1f..100f,
                         unit = "ms",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosOrange,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
                         title = "Release Time (Recovery)",
@@ -227,150 +219,107 @@ fun AdvancedModeScreen(
                         valueRange = 10f..500f,
                         unit = "ms",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosOrange,
                         reduceGlass = uiState.reduceGlass
                     )
                 }
             }
         }
 
-        // Space HRTF Profile Choice (PRD 6.3)
+        // Space HRTF Profile Choice (Apple Inset Grouped Section)
         item {
+            IosSectionHeader(
+                title = "Spatial Audio & HRTF",
+                subtitle = "Head-related transfer function & binaural room simulation"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
                     Text(
-                        text = "Virtualizer HRTF Profile",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                    Text(
-                        text = "Head-related transfer function simulation width",
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("Narrow", "Natural", "Wide").forEach { profile ->
-                            val isSelected = uiState.hrtfProfile == profile
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(GlassTokens.radiusPill)
-                                    .background(
-                                        if (isSelected) GlassTokens.AccentStart
-                                         else Color.White.copy(alpha = 0.08f)
-                                    )
-                                    .clickable { viewModel.setHrtfProfile(profile) }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = profile,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.White else GlassTokens.TextPrimary
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = "Spatial Room Simulation (PRD 6.7a)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = GlassTokens.TextPrimary
-                    )
-                    Text(
-                        text = "Simulates early room reflections and acoustic environment",
+                        text = "HRTF VIRTUALIZER WIDTH",
                         fontSize = 11.sp,
-                        color = GlassTokens.TextSecondary
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf("Natural", "Intimate Studio", "Concert Hall", "Cathedral").forEach { room ->
-                            val isSelected = uiState.spatialRoomType == room
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(GlassTokens.radiusPill)
-                                    .background(
-                                        if (isSelected) GlassTokens.AccentStart
-                                        else Color.White.copy(alpha = 0.08f)
-                                    )
-                                    .clickable { viewModel.setSpatialRoomType(room) }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = room.replace("Intimate ", "").replace("Concert ", ""),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.White else GlassTokens.TextSecondary
-                                )
-                            }
-                        }
-                    }
+                    val hrtfProfiles = listOf("Narrow", "Natural", "Wide")
+                    val selectedHrtfIndex = hrtfProfiles.indexOf(uiState.hrtfProfile).let { if (it >= 0) it else 1 }
+                    IosSegmentedControl(
+                        items = hrtfProfiles,
+                        selectedIndex = selectedHrtfIndex,
+                        onSelect = { viewModel.setHrtfProfile(hrtfProfiles[it]) },
+                        label = { it }
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    Text(
+                        text = "ROOM SIMULATION (PRD 6.7a)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+
+                    val roomTypes = listOf("Natural", "Intimate Studio", "Concert Hall", "Cathedral")
+                    val selectedRoomIndex = roomTypes.indexOf(uiState.spatialRoomType).let { if (it >= 0) it else 0 }
+                    IosSegmentedControl(
+                        items = roomTypes,
+                        selectedIndex = selectedRoomIndex,
+                        onSelect = { viewModel.setSpatialRoomType(roomTypes[it]) },
+                        label = { it.replace("Intimate ", "").replace("Concert ", "") }
+                    )
                 }
             }
         }
 
-        // Time & Space FX: Reverb & Delay
+        // Time & Space FX: Reverb & Delay (Apple Inset Grouped Section)
         item {
+            IosSectionHeader(
+                title = "Algorithmic Time & Space",
+                subtitle = "Schroeder-Freeverb 8-comb/4-allpass network & stereo ping-pong delay"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Text(
-                        text = "Algorithmic Reverb & Delay (Time & Space)",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                    Text(
-                        text = "Schroeder-Freeverb 8-comb/4-allpass network & stereo ping-pong delay",
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary
-                    )
+                    // Apple Subtle Capability Disclosure Callout
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(GlassTokens.radiusSm)
+                            .background(GlassTokens.IosGroupedSecondary)
+                            .border(0.6.dp, GlassTokens.IosSeparator, GlassTokens.radiusSm)
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = "💡 Room Size & Wall Material process Daydream's player directly. System-Wide mode routes through standard OS reverb.",
+                            fontSize = 11.sp,
+                            color = GlassTokens.TextSecondary,
+                            lineHeight = 15.sp
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // In-app-only disclosure (PRD 12.1 capability boundary): Room
-                    // Size/Wall Material only exist in the custom Freeverb engine,
-                    // which only processes Daydream's own player - System-Wide
-                    // Mode uses Android's much more limited stock reverb instead.
                     Text(
-                        text = "Room Size & Wall Material only apply to Daydream's own player — not to other apps enhanced via System-Wide Mode.",
+                        text = "ROOM SIZE CHARACTER",
                         fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-
-                    // Room Size character preset (PRD 6.15) - changes actual comb
-                    // delay length, not just decay time, so each size feels
-                    // structurally distinct, not just "longer tail"
-                    Text(
-                        text = "Room Size",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
+                        letterSpacing = 0.5.sp
                     )
                     Row(
                         modifier = Modifier
@@ -384,9 +333,14 @@ fun AdvancedModeScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(GlassTokens.radiusPill)
-                                    .background(if (selected) GlassTokens.AccentStart else GlassTokens.RaisedGlassFill)
+                                    .background(if (selected) GlassTokens.IosIndigo else GlassTokens.IosGroupedSecondary)
+                                    .border(
+                                        0.6.dp,
+                                        if (selected) GlassTokens.IosIndigo else GlassTokens.IosSeparator,
+                                        GlassTokens.radiusPill
+                                    )
                                     .clickable { viewModel.setRoomSize(size) }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
                             ) {
                                 Text(
                                     text = size.label,
@@ -398,14 +352,13 @@ fun AdvancedModeScreen(
                         }
                     }
 
-                    // Wall Material character preset (PRD 6.15) - colors the
-                    // reflections spectrally (bright/reflective vs warm/absorptive)
                     Text(
-                        text = "Wall Material",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary,
-                        modifier = Modifier.padding(top = 8.dp)
+                        text = "WALL REFLECTION MATERIAL",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(top = 10.dp)
                     )
                     Row(
                         modifier = Modifier
@@ -419,9 +372,14 @@ fun AdvancedModeScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(GlassTokens.radiusPill)
-                                    .background(if (selected) GlassTokens.AccentStart else GlassTokens.RaisedGlassFill)
+                                    .background(if (selected) GlassTokens.IosTeal else GlassTokens.IosGroupedSecondary)
+                                    .border(
+                                        0.6.dp,
+                                        if (selected) GlassTokens.IosTeal else GlassTokens.IosSeparator,
+                                        GlassTokens.radiusPill
+                                    )
                                     .clickable { viewModel.setWallMaterial(material) }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
                             ) {
                                 Text(
                                     text = material.label,
@@ -433,7 +391,7 @@ fun AdvancedModeScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
 
                     // Reverb Controls
                     LiquidSlider(
@@ -442,10 +400,13 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setReverbWet(it) },
                         valueRange = 0f..100f,
                         unit = "%",
-                        technicalValue = "Wet/Dry Blend (up to 2.6x wet gain at max)",
+                        technicalValue = "Wet/Dry Blend (up to 2.6x wet gain)",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
                         title = "Reverb Room Size (Fine Tune)",
@@ -453,10 +414,13 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setReverbRoomSize(it) },
                         valueRange = 10f..100f,
                         unit = "%",
-                        technicalValue = "Comb Feedback 0.35..0.985 (biased by Room Size + Wall Material above)",
+                        technicalValue = "Comb Feedback 0.35..0.985",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
                         title = "Reverb HF Damping",
@@ -466,10 +430,11 @@ fun AdvancedModeScreen(
                         unit = "%",
                         technicalValue = "Absorption Coeff",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 10.dp))
 
                     // Echo / Delay Controls
                     LiquidSlider(
@@ -480,8 +445,11 @@ fun AdvancedModeScreen(
                         unit = "%",
                         technicalValue = "Delay Tap Output",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
                         title = "Echo Delay Time",
@@ -489,10 +457,13 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setEchoTimeMs(it.toInt()) },
                         valueRange = 50f..3000f,
                         unit = "ms",
-                        technicalValue = "${uiState.echoTimeMs}ms (up to 3s for huge canyon/dub delays)",
+                        technicalValue = "${uiState.echoTimeMs}ms delay line",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
                         title = "Echo Feedback (Repeats)",
@@ -500,22 +471,13 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setEchoFeedback(it) },
                         valueRange = 0f..96f,
                         unit = "%",
-                        technicalValue = "Crossfeed Loop Gain (near-infinite trailing echo at max)",
+                        technicalValue = "Crossfeed Loop Gain",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // In-app-only disclosure (PRD 12.1): this is a hard Android
-                    // platform limit, not a scoping choice - there is no API to
-                    // change another app's playback speed on unrooted Android.
-                    Text(
-                        text = "Tempo/Vari-Speed only works on Daydream's own player — Android has no way to change another app's playback speed.",
-                        fontSize = 11.sp,
-                        color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 10.dp))
 
                     // Playback Tempo
                     LiquidSlider(
@@ -526,22 +488,20 @@ fun AdvancedModeScreen(
                         unit = "x",
                         technicalValue = if (uiState.varispeedMode) "Vari-Speed (pitch follows tempo)" else "Time-Stretch (pitch preserved)",
                         showTechnical = true,
+                        accentColor = GlassTokens.IosOrange,
                         reduceGlass = uiState.reduceGlass
                     )
 
-                    // Honesty indicator (PRD 12.1 pattern): some devices/OEMs
-                    // clamp extreme speed requests rather than applying them
-                    // as requested - tell the user instead of pretending.
                     if (!uiState.speedAppliedAsRequested) {
                         Text(
-                            text = "Your device applied ${String.format("%.2f", uiState.confirmedPlaybackSpeed)}x instead of ${String.format("%.2f", uiState.playbackSpeed)}x — this is a hardware/OEM limit, not a bug.",
+                            text = "Your device applied ${String.format("%.2f", uiState.confirmedPlaybackSpeed)}x instead of ${String.format("%.2f", uiState.playbackSpeed)}x (OEM hardware limit).",
                             fontSize = 11.sp,
-                            color = GlassTokens.AccentWarning,
+                            color = GlassTokens.IosOrange,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 8.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -551,17 +511,17 @@ fun AdvancedModeScreen(
                         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
                                 text = "Vari-Speed (Tape Slowdown)",
-                                fontSize = 13.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = GlassTokens.TextPrimary
                             )
                             Text(
                                 text = if (uiState.varispeedMode) {
-                                    "Pitch drops as you slow down — the classic tape/vinyl slowdown sound (pairs well with heavy echo/reverb above)."
+                                    "Pitch drops as you slow down — classic analog tape slowdown tone."
                                 } else {
-                                    "Pitch stays natural regardless of speed — studio/podcast-style time-stretch."
+                                    "Pitch stays natural regardless of speed — studio time-stretch."
                                 },
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = GlassTokens.TextSecondary
                             )
                         }
@@ -570,7 +530,7 @@ fun AdvancedModeScreen(
                             onCheckedChange = { viewModel.setVarispeedMode(it) },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor = GlassTokens.AccentStart
+                                checkedTrackColor = GlassTokens.IosGreen
                             )
                         )
                     }
@@ -578,37 +538,20 @@ fun AdvancedModeScreen(
             }
         }
 
-        // Preset Export / Import (PRD 6.2 & FR-12)
+        // Preset Export / Import (Apple Inset Grouped Section)
         item {
+            IosSectionHeader(
+                title = "Preset Management",
+                subtitle = "Share and import complete 6-stage chain presets as JSON"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Preset Management (FR-12)",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GlassTokens.TextPrimary
-                            )
-                            Text(
-                                text = "Share and import complete 6-stage chain presets as JSON",
-                                fontSize = 12.sp,
-                                color = GlassTokens.TextSecondary
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -618,32 +561,35 @@ fun AdvancedModeScreen(
                                 val json = viewModel.exportCurrentPresetJson()
                                 clipboardManager.setText(AnnotatedString(json))
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
                             shape = GlassTokens.radiusPill,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ContentCopy,
                                 contentDescription = null,
+                                tint = Color.White,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Export JSON", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                         }
 
                         Button(
                             onClick = { viewModel.openImportPresetDialog() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosSeparator),
                             shape = GlassTokens.radiusPill,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.FileDownload,
                                 contentDescription = null,
+                                tint = GlassTokens.IosBlue,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Import JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Import JSON", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosBlue)
                         }
                     }
                 }
@@ -651,7 +597,7 @@ fun AdvancedModeScreen(
         }
     }
 
-    // Import Preset Dialog Modal (PRD FR-12)
+    // Import Preset Dialog Modal (Apple Modal Sheet HIG)
     if (uiState.showImportPresetDialog) {
         var jsonInput by remember { mutableStateOf("") }
         var importError by remember { mutableStateOf<String?>(null) }
@@ -659,29 +605,44 @@ fun AdvancedModeScreen(
         AlertDialog(
             onDismissRequest = { viewModel.closeImportPresetDialog() },
             title = {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "Import Preset (JSON)",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
+                    // Apple Modal Sheet Grabber
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(5.dp)
+                            .clip(GlassTokens.radiusPill)
+                            .background(Color(0xFF5A5A5E))
                     )
-                    IconButton(onClick = { viewModel.closeImportPresetDialog() }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Import Preset",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.TextPrimary
+                        )
+                        IconButton(onClick = { viewModel.closeImportPresetDialog() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
+                        }
                     }
                 }
             },
             text = {
                 Column {
                     Text(
-                        text = "Paste a saved Daydream Audio JSON preset bundle below to restore the exact 6-stage chain:",
-                        fontSize = 12.sp,
+                        text = "Paste a saved Daydream Audio JSON preset bundle to restore the exact 6-stage chain:",
+                        fontSize = 13.sp,
                         color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(bottom = 10.dp)
                     )
 
                     OutlinedTextField(
@@ -692,27 +653,27 @@ fun AdvancedModeScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(160.dp),
+                            .height(150.dp),
                         placeholder = { Text("{ \"version\": 1, ... }", fontSize = 12.sp, color = GlassTokens.TextMuted) },
                         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = GlassTokens.TextPrimary),
                         colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFF141220),
-                            unfocusedContainerColor = Color(0xFF141220),
-                            focusedIndicatorColor = GlassTokens.AccentStart,
-                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.2f)
+                            focusedContainerColor = GlassTokens.IosGroupedSecondary,
+                            unfocusedContainerColor = GlassTokens.IosGroupedSecondary,
+                            focusedIndicatorColor = GlassTokens.IosBlue,
+                            unfocusedIndicatorColor = GlassTokens.IosSeparator
                         )
                     )
 
                     if (importError != null) {
                         Text(
                             text = importError!!,
-                            fontSize = 11.sp,
-                            color = GlassTokens.AccentWarning,
-                            modifier = Modifier.padding(top = 4.dp)
+                            fontSize = 12.sp,
+                            color = GlassTokens.IosRed,
+                            modifier = Modifier.padding(top = 6.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Button(
                         onClick = {
@@ -721,11 +682,12 @@ fun AdvancedModeScreen(
                                 jsonInput = clip
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.10f)),
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosSeparator),
                         shape = GlassTokens.radiusPill,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Paste From Clipboard", fontSize = 12.sp, color = GlassTokens.AccentStart)
+                        Text("Paste From Clipboard", fontSize = 13.sp, color = GlassTokens.IosBlue, fontWeight = FontWeight.Medium)
                     }
                 }
             },
@@ -743,7 +705,7 @@ fun AdvancedModeScreen(
                             importError = "Invalid preset format. Check JSON syntax."
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
                     shape = GlassTokens.radiusPill
                 ) {
                     Text("Apply Preset", color = Color.White, fontWeight = FontWeight.Bold)
@@ -757,8 +719,8 @@ fun AdvancedModeScreen(
                     Text("Cancel", color = GlassTokens.TextSecondary)
                 }
             },
-            containerColor = Color(0xFF191626),
-            shape = GlassTokens.radiusLg
+            containerColor = GlassTokens.IosGroupedPrimary,
+            shape = GlassTokens.radiusXl
         )
     }
 }

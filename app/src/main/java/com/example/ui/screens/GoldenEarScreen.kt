@@ -41,7 +41,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PlainBand
 import com.example.ui.components.ABCompareBar
+import com.example.ui.components.IosRowSeparator
+import com.example.ui.components.IosSectionHeader
 import com.example.ui.theme.GlassTokens
+import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
 import com.example.viewmodel.DaydreamUiState
 import com.example.viewmodel.DaydreamViewModel
@@ -60,71 +63,76 @@ fun GoldenEarScreen(
             .padding(paddingValues)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Header
+        // Apple Large Title Header
         item {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Hearing,
-                        contentDescription = null,
-                        tint = GlassTokens.AccentStart,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Golden Ear Trainer",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                }
+            Column(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) {
+                Text(
+                    text = "Golden Ear",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextPrimary,
+                    letterSpacing = (-0.6).sp
+                )
                 Text(
                     text = "Train your ears to recognize frequency bands and acoustic changes",
                     fontSize = 13.sp,
-                    color = GlassTokens.TextSecondary
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
 
-        // Stats Card (Score, Streak, Rank)
+        // Apple Fitness-Style Metric Cards (Score, Streak, Rank)
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
-                    .padding(16.dp)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
+                    .padding(vertical = 14.dp, horizontal = 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceAround,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    StatBox(title = "Score", value = "${uiState.earTrainerScore} pts")
-                    StatBox(title = "Streak", value = "${uiState.earTrainerStreak} 🔥")
-                    StatBox(title = "Rank", value = uiState.earTrainerLevel)
+                    StatBox(title = "SCORE", value = "${uiState.earTrainerScore}", unit = "pts", tint = GlassTokens.IosBlue)
+                    Box(modifier = Modifier.width(0.8.dp).height(32.dp).background(GlassTokens.IosSeparator))
+                    StatBox(title = "STREAK", value = "${uiState.earTrainerStreak}", unit = "🔥", tint = GlassTokens.IosOrange)
+                    Box(modifier = Modifier.width(0.8.dp).height(32.dp).background(GlassTokens.IosSeparator))
+                    StatBox(title = "RANK", value = uiState.earTrainerLevel, unit = "", tint = GlassTokens.IosGreen)
                 }
             }
         }
 
         // Active Challenge Card
+        // Active Challenge Card (Apple Inset Grouped Section)
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(18.dp)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     if (challenge == null) {
-                        Icon(
-                            imageVector = Icons.Default.Psychology,
-                            contentDescription = null,
-                            tint = GlassTokens.AccentStart,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(GlassTokens.radiusMd)
+                                .background(GlassTokens.IosBlue.copy(alpha = 0.14f))
+                                .border(0.8.dp, GlassTokens.IosBlue.copy(alpha = 0.35f), GlassTokens.radiusMd),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Hearing,
+                                contentDescription = null,
+                                tint = GlassTokens.IosBlue,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
                         Text(
                             text = "Test Your Hearing Acuity",
                             fontSize = 18.sp,
@@ -135,21 +143,24 @@ fun GoldenEarScreen(
                             text = "We will modify one plain-language frequency band. Listen carefully and guess which one changed!",
                             fontSize = 13.sp,
                             color = GlassTokens.TextSecondary,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Button(
                             onClick = {
                                 if (!uiState.isPlaying) viewModel.togglePlayPause()
                                 viewModel.startNewEarChallenge()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
                             shape = GlassTokens.radiusPill,
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
                             modifier = Modifier.testTag("start_challenge_button")
                         ) {
-                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Start Challenge", fontWeight = FontWeight.Bold)
+                            Text("Start Challenge", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     } else {
                         Row(
@@ -161,46 +172,49 @@ fun GoldenEarScreen(
                                 text = "Challenge #${challenge.questionNumber}",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.AccentStart
+                                color = GlassTokens.IosBlue
                             )
                             Button(
                                 onClick = { viewModel.startNewEarChallenge() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
+                                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                                border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosSeparator),
                                 shape = GlassTokens.radiusPill,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = null,
+                                    tint = GlassTokens.IosBlue,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("New Sound", fontSize = 11.sp, color = Color.White)
+                                Text("New Sound", fontSize = 11.sp, color = GlassTokens.IosBlue, fontWeight = FontWeight.SemiBold)
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         // PRD §22.7 & §22.8: Sonic Glass Visual Hint Layer toggle
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(GlassTokens.radiusMd)
-                                .background(Color.White.copy(alpha = 0.05f))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                .clip(GlassTokens.radiusSm)
+                                .background(GlassTokens.IosGroupedSecondary)
+                                .border(0.6.dp, GlassTokens.IosSeparator, GlassTokens.radiusSm)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                 Text(
-                                    text = "Sonic Glass Visual Hint",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "Visual Hint Assistant",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = GlassTokens.TextPrimary
                                 )
                                 Text(
-                                    text = "Subtle reactive ambient glow on target band (PRD §22.7)",
-                                    fontSize = 10.sp,
+                                    text = "Subtle reactive spectral glow on target band",
+                                    fontSize = 11.sp,
                                     color = GlassTokens.TextSecondary
                                 )
                             }
@@ -209,14 +223,12 @@ fun GoldenEarScreen(
                                 onCheckedChange = { viewModel.toggleSonicHintInEarTrainer() },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = GlassTokens.AccentStart,
-                                    uncheckedThumbColor = GlassTokens.TextMuted,
-                                    uncheckedTrackColor = Color.White.copy(alpha = 0.12f)
+                                    checkedTrackColor = GlassTokens.IosGreen
                                 )
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
                             text = "Which plain-language band was boosted or cut?",
@@ -225,91 +237,91 @@ fun GoldenEarScreen(
                             fontWeight = FontWeight.Medium
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        // Band Guess Buttons
-                        PlainBand.entries.forEach { band ->
-                            val isHinted = uiState.showSonicHintInEarTrainer && challenge.targetBand == band
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clip(GlassTokens.radiusMd)
-                                    .background(
-                                        if (isHinted) GlassTokens.AccentStart.copy(alpha = 0.22f)
-                                        else Color.White.copy(alpha = 0.08f)
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (isHinted) GlassTokens.AccentStart.copy(alpha = 0.7f)
-                                        else Color.White.copy(alpha = 0.15f),
-                                        GlassTokens.radiusMd
-                                    )
-                                    .clickable { viewModel.submitEarGuess(band) }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                                    .testTag("guess_button_${band.name.lowercase()}")
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                        // Band Guess Buttons (Apple Grouped Selectable Rows)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(GlassTokens.radiusMd)
+                                .background(GlassTokens.IosGroupedSecondary)
+                                .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusMd)
+                        ) {
+                            val bands = PlainBand.entries.toList()
+                            bands.forEachIndexed { index, band ->
+                                val isHinted = uiState.showSonicHintInEarTrainer && challenge.targetBand == band
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.submitEarGuess(band) }
+                                        .background(
+                                            if (isHinted) GlassTokens.IosBlue.copy(alpha = 0.15f)
+                                            else Color.Transparent
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        .testTag("guess_button_${band.name.lowercase()}")
                                 ) {
-                                    Column {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = band.title,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isHinted) GlassTokens.AccentStart else GlassTokens.TextPrimary
-                                            )
-                                            if (isHinted) {
-                                                Spacer(modifier = Modifier.width(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Text(
-                                                    text = "●",
-                                                    fontSize = 10.sp,
-                                                    color = GlassTokens.AccentStart
+                                                    text = band.title,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (isHinted) GlassTokens.IosBlue else GlassTokens.TextPrimary
                                                 )
+                                                if (isHinted) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(6.dp)
+                                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                                            .background(GlassTokens.IosBlue)
+                                                    )
+                                                }
                                             }
+                                            Text(
+                                                text = band.frequencyRange,
+                                                fontSize = 11.sp,
+                                                color = GlassTokens.TextSecondary
+                                            )
                                         }
                                         Text(
-                                            text = band.frequencyRange,
+                                            text = band.plainDescription,
                                             fontSize = 11.sp,
-                                            color = GlassTokens.TextSecondary
+                                            color = GlassTokens.TextMuted,
+                                            maxLines = 1
                                         )
                                     }
-                                    Text(
-                                        text = band.plainDescription,
-                                        fontSize = 11.sp,
-                                        color = GlassTokens.TextMuted
-                                    )
+                                }
+                                if (index < bands.size - 1) {
+                                    IosRowSeparator()
                                 }
                             }
                         }
 
-                        // Feedback on last answer
+                        // Feedback on last answer (Apple Alert Pill)
                         AnimatedVisibility(visible = uiState.lastAnswerCorrect != null) {
                             val correct = uiState.lastAnswerCorrect == true
+                            val tintColor = if (correct) GlassTokens.IosGreen else GlassTokens.IosRed
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 14.dp)
                                     .clip(GlassTokens.radiusMd)
-                                    .background(
-                                        if (correct) GlassTokens.AccentSafe.copy(alpha = 0.2f)
-                                        else GlassTokens.AccentWarning.copy(alpha = 0.2f)
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (correct) GlassTokens.AccentSafe else GlassTokens.AccentWarning,
-                                        GlassTokens.radiusMd
-                                    )
+                                    .background(tintColor.copy(alpha = 0.15f))
+                                    .border(0.8.dp, tintColor.copy(alpha = 0.5f), GlassTokens.radiusMd)
                                     .padding(12.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = if (correct) Icons.Default.CheckCircle else Icons.Default.Error,
                                         contentDescription = null,
-                                        tint = if (correct) GlassTokens.AccentSafe else GlassTokens.AccentWarning,
+                                        tint = tintColor,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -317,7 +329,7 @@ fun GoldenEarScreen(
                                         text = if (correct) "Correct! +100 Points" else "Incorrect — listen to the A/B difference!",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (correct) GlassTokens.AccentSafe else GlassTokens.AccentWarning
+                                        color = tintColor
                                     )
                                 }
                             }
@@ -339,18 +351,32 @@ fun GoldenEarScreen(
 }
 
 @Composable
-private fun StatBox(title: String, value: String) {
+private fun StatBox(title: String, value: String, unit: String, tint: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = title,
-            fontSize = 11.sp,
-            color = GlassTokens.TextSecondary
-        )
-        Text(
-            text = value,
-            fontSize = 15.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            color = GlassTokens.AccentStart
+            color = GlassTokens.TextSecondary,
+            letterSpacing = 0.6.sp
         )
+        Spacer(modifier = Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = value,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = tint
+            )
+            if (unit.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = unit,
+                    fontSize = 11.sp,
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+        }
     }
 }

@@ -73,8 +73,8 @@ import com.example.ui.theme.floatingGlass
 import com.example.ui.theme.raisedGlass
 
 /**
- * Sonic Glass dynamic backdrop (PRD 22.7)
- * Renders the ambient background with subtle real-time audio-reactive glow ripples.
+ * Apple Ambient Audio Backdrop (OpenDesign Apple Design System & HIG)
+ * Renders an organic, deeply immersive dark backdrop with gentle audio-reactive chromatic radiance.
  */
 @Composable
 fun SonicGlassBackground(
@@ -86,97 +86,96 @@ fun SonicGlassBackground(
     content: @Composable () -> Unit
 ) {
     val animatedRms by animateFloatAsState(
-        targetValue = if (reduceMotion) 0f else audioRms.coerceIn(0f, 0.45f),
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
-        label = "rms_glow"
+        targetValue = if (reduceMotion) 0f else audioRms.coerceIn(0f, 0.40f),
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "apple_rms_glow"
     )
 
     val trebleEnergy = if (spectrum != null && spectrum.size >= 8) {
         (spectrum[5] + spectrum[6] + spectrum[7]) / 3f
-    } else 0.1f
+    } else 0.08f
 
     val bassEnergy = if (spectrum != null && spectrum.size >= 8) {
         (spectrum[0] + spectrum[1] + spectrum[2]) / 3f
-    } else 0.1f
+    } else 0.08f
 
     Box(modifier = modifier.fillMaxSize().background(GlassTokens.BackdropBase)) {
         if (!reduceGlass) {
-            // Ambient photo backdrop with optical blur
+            // Ambient photo backdrop with smooth Apple Gaussian blur
             Image(
                 painter = painterResource(id = R.drawable.bg_ambient_glass),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(36.dp)
+                    .blur(48.dp)
             )
 
-            // Deep Midnight obsidian glass filter layer over image
+            // Apple Dark Mode Obsidian scrim
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xFF07090E).copy(alpha = 0.85f),
-                                Color(0xFF030508).copy(alpha = 0.92f)
+                                Color(0xFF000000).copy(alpha = 0.82f),
+                                Color(0xFF050508).copy(alpha = 0.90f),
+                                Color(0xFF000000).copy(alpha = 0.96f)
                             )
                         )
                     )
             )
 
-            // Fluid Apple Aurora light fields (PRD 22.7 & 22.12)
+            // Subtle Apple Chromatic Light Diffusion (Deep Indigo + Teal + Amber)
             Canvas(modifier = Modifier.fillMaxSize()) {
-                // Pole A: Electric Cyan Aurora (Top-Left)
-                val poleARadius = (size.width * 0.55f) + (animatedRms * 280f) + (bassEnergy * 120f)
-                val poleAAlpha = (0.20f + animatedRms * 0.35f).coerceIn(0.12f, 0.50f)
+                // Pole A: Apple System Indigo / Violet radiance (Top Left)
+                val poleARadius = (size.width * 0.50f) + (animatedRms * 180f) + (bassEnergy * 80f)
+                val poleAAlpha = (0.10f + animatedRms * 0.18f).coerceIn(0.06f, 0.28f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            GlassTokens.AccentEnd.copy(alpha = poleAAlpha),
-                            GlassTokens.AccentStart.copy(alpha = poleAAlpha * 0.5f),
+                            GlassTokens.IosIndigo.copy(alpha = poleAAlpha),
+                            GlassTokens.IosBlue.copy(alpha = poleAAlpha * 0.4f),
                             Color.Transparent
                         ),
-                        center = Offset(size.width * 0.20f, size.height * 0.18f),
+                        center = Offset(size.width * 0.22f, size.height * 0.15f),
                         radius = poleARadius
                     ),
                     radius = poleARadius,
-                    center = Offset(size.width * 0.20f, size.height * 0.18f)
+                    center = Offset(size.width * 0.22f, size.height * 0.15f)
                 )
 
-                // Pole B: Neon Violet / Indigo Aurora (Bottom-Right)
-                val poleBRadius = (size.width * 0.65f) + (animatedRms * 320f) + (trebleEnergy * 150f)
-                val poleBAlpha = (0.16f + animatedRms * 0.28f).coerceIn(0.10f, 0.42f)
+                // Pole B: Apple System Teal / Cyan glow (Center Right)
+                val poleBRadius = (size.width * 0.55f) + (animatedRms * 200f) + (trebleEnergy * 90f)
+                val poleBAlpha = (0.08f + animatedRms * 0.16f).coerceIn(0.05f, 0.24f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            GlassTokens.AccentCool.copy(alpha = poleBAlpha),
-                            GlassTokens.AccentStart.copy(alpha = poleBAlpha * 0.3f),
+                            GlassTokens.IosTeal.copy(alpha = poleBAlpha),
+                            GlassTokens.IosBlue.copy(alpha = poleBAlpha * 0.3f),
                             Color.Transparent
                         ),
-                        center = Offset(size.width * 0.85f, size.height * 0.72f),
+                        center = Offset(size.width * 0.80f, size.height * 0.65f),
                         radius = poleBRadius
                     ),
                     radius = poleBRadius,
-                    center = Offset(size.width * 0.85f, size.height * 0.72f)
+                    center = Offset(size.width * 0.80f, size.height * 0.65f)
                 )
 
-                // Center Dynamic Fluid Lens Ripple
-                val center = Offset(size.width / 2f, size.height * 0.42f)
-                val rippleRadius = (size.width * 0.40f) + (animatedRms * 360f)
-                val rippleAlpha = (0.08f + animatedRms * 0.22f).coerceIn(0.04f, 0.28f)
+                // Pole C: Subtle warm amber core (Sub-bass anchor)
+                val poleCRadius = (size.width * 0.35f) + (bassEnergy * 100f)
+                val poleCAlpha = (0.04f + bassEnergy * 0.08f).coerceIn(0.02f, 0.12f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            GlassTokens.AccentCyan.copy(alpha = rippleAlpha),
-                            GlassTokens.AccentCool.copy(alpha = rippleAlpha * 0.4f),
+                            GlassTokens.IosOrange.copy(alpha = poleCAlpha),
                             Color.Transparent
                         ),
-                        center = center,
-                        radius = rippleRadius
+                        center = Offset(size.width * 0.45f, size.height * 0.40f),
+                        radius = poleCRadius
                     ),
-                    radius = rippleRadius,
-                    center = center
+                    radius = poleCRadius,
+                    center = Offset(size.width * 0.45f, size.height * 0.40f)
                 )
             }
         }
@@ -185,7 +184,7 @@ fun SonicGlassBackground(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(GlassTokens.BackdropScrim.copy(alpha = if (reduceGlass) 0.98f else 0.35f))
+                .background(Color(0xFF000000).copy(alpha = if (reduceGlass) 0.98f else 0.25f))
         )
 
         content()
@@ -193,8 +192,9 @@ fun SonicGlassBackground(
 }
 
 /**
- * Liquid Slider component (PRD 22.4 & 22.11)
- * Glassmorphic slider with plain-English labeling, long-press tooltip trigger, and technical values.
+/**
+ * Apple Control Center / Music Slider (OpenDesign Apple Design System & HIG)
+ * Recessed track, pure white thumb with physical iOS elevation shadow, tabular figures, and SF Pro typography.
  */
 @Composable
 fun LiquidSlider(
@@ -207,7 +207,7 @@ fun LiquidSlider(
     showTechnical: Boolean = false,
     tipDescription: String? = null,
     onInfoClick: (() -> Unit)? = null,
-    accentColor: Color = GlassTokens.AccentStart,
+    accentColor: Color = GlassTokens.IosBlue,
     isWarning: Boolean = false,
     warningText: String? = null,
     reduceGlass: Boolean = false,
@@ -216,7 +216,7 @@ fun LiquidSlider(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(vertical = 5.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -241,24 +241,32 @@ fun LiquidSlider(
                 )
                 if (onInfoClick != null) {
                     Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "Info on $title (tap or long-press)",
-                        tint = GlassTokens.TextMuted,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(17.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.10f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Info on $title",
+                            tint = GlassTokens.TextSecondary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
                 }
             }
 
-            // Value readout (Plain or Technical)
+            // Value readout (SF Pro Tabular Figures)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (showTechnical && technicalValue != null) {
                     Text(
                         text = technicalValue,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Normal,
                         color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(end = 6.dp)
+                        modifier = Modifier.padding(end = 8.dp)
                     )
                 }
                 val formattedDisplayValue = when {
@@ -282,7 +290,7 @@ fun LiquidSlider(
                     text = formattedDisplayValue,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isWarning) GlassTokens.AccentWarning else GlassTokens.AccentEnd
+                    color = if (isWarning) GlassTokens.IosRed else GlassTokens.IosBlue
                 )
             }
         }
@@ -291,23 +299,18 @@ fun LiquidSlider(
             Text(
                 text = warningText,
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = GlassTokens.AccentWarning,
-                modifier = Modifier.padding(top = 2.dp)
+                fontWeight = FontWeight.Normal,
+                color = GlassTokens.IosRed,
+                modifier = Modifier.padding(top = 1.dp)
             )
         }
 
         val interactionSource = remember { MutableInteractionSource() }
         val isDragged by interactionSource.collectIsDraggedAsState()
         val thumbSize by animateDpAsState(
-            targetValue = if (isDragged) 34.dp else 28.dp,
-            animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
-            label = "liquid_thumb_size"
-        )
-        val thumbScaleY by animateFloatAsState(
-            targetValue = if (isDragged) 0.90f else 1.0f,
-            animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
-            label = "liquid_thumb_squash"
+            targetValue = if (isDragged) 32.dp else 26.dp,
+            animationSpec = spring(dampingRatio = 0.75f, stiffness = 350f),
+            label = "apple_thumb_size"
         )
 
         @OptIn(ExperimentalMaterial3Api::class)
@@ -321,8 +324,6 @@ fun LiquidSlider(
                 Box(
                     modifier = Modifier
                         .size(thumbSize)
-                        .graphicsLayer(scaleY = thumbScaleY)
-                        .clip(CircleShape)
                         .then(
                             if (onInfoClick != null) {
                                 Modifier.combinedClickable(
@@ -330,57 +331,43 @@ fun LiquidSlider(
                                     onLongClick = { onInfoClick() }
                                 )
                             } else Modifier
-                        )
-                        .background(
-                            if (reduceGlass) SolidColor(GlassTokens.SolidCardFill)
-                            else Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFF243048),
-                                    Color(0xFF121927)
-                                )
-                            )
-                        )
-                        .border(
-                            1.5.dp,
-                            if (isWarning) SolidColor(GlassTokens.AccentWarning)
-                            else Brush.verticalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.85f),
-                                    Color.White.copy(alpha = 0.20f)
-                                )
-                            ),
-                            CircleShape
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Glass pearl 3D specular lens highlight
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.65f),
-                                    Color.White.copy(alpha = 0.12f),
-                                    Color.Transparent
-                                ),
-                                center = Offset(size.width * 0.35f, size.height * 0.30f),
-                                radius = size.width * 0.42f
-                            ),
-                            radius = size.width * 0.38f,
-                            center = Offset(size.width * 0.35f, size.height * 0.30f)
-                        )
-                    }
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val thumbRadius = size.width * 0.44f
 
-                    // Fluid jewel center core
-                    Box(
-                        modifier = Modifier
-                            .size(if (isDragged) 12.dp else 10.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isWarning) SolidColor(GlassTokens.AccentWarning)
-                                else GlassTokens.AccentGradient
+                        // Physical iOS drop shadow (0 2px 6px rgba(0,0,0,0.38))
+                        drawCircle(
+                            color = Color.Black.copy(alpha = 0.38f),
+                            radius = thumbRadius,
+                            center = Offset(center.x, center.y + 1.8.dp.toPx())
+                        )
+                        // Apple pure white thumb base
+                        drawCircle(
+                            color = Color(0xFFFFFFFF),
+                            radius = thumbRadius,
+                            center = center
+                        )
+                        // Specular hairline rim
+                        drawCircle(
+                            color = Color.Black.copy(alpha = 0.08f),
+                            radius = thumbRadius,
+                            center = center,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.8.dp.toPx())
+                        )
+
+                        // Subtle active accent indicator dot on drag or warning
+                        if (isDragged || isWarning) {
+                            val dotColor = if (isWarning) GlassTokens.IosRed else GlassTokens.IosBlue
+                            drawCircle(
+                                color = dotColor,
+                                radius = 2.5.dp.toPx(),
+                                center = center
                             )
-                            .border(0.5.dp, Color.White.copy(alpha = 0.80f), CircleShape)
-                    )
+                        }
+                    }
                 }
             },
             track = { sliderState ->
@@ -392,54 +379,35 @@ fun LiquidSlider(
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
+                        .height(7.dp)
                         .clip(GlassTokens.radiusPill)
                 ) {
-                    // Apple-style sunken glass trench
+                    // Apple recessed background track (System Gray 5 / dark subtle)
                     drawRoundRect(
-                        color = Color(0xFF0B101A).copy(alpha = 0.85f),
+                        color = Color(0xFF2C2C2E),
                         cornerRadius = CornerRadius(size.height / 2, size.height / 2)
                     )
+                    // Inner hairline top edge for machined depth
                     drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.16f),
-                                Color.White.copy(alpha = 0.04f)
-                            )
-                        ),
+                        color = Color.White.copy(alpha = 0.06f),
                         cornerRadius = CornerRadius(size.height / 2, size.height / 2),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.6.dp.toPx())
                     )
 
                     val activeWidth = size.width * fraction
                     if (activeWidth > 0f) {
-                        val gradientColors = if (isWarning) {
-                            listOf(GlassTokens.AccentWarning, GlassTokens.AccentWarning)
-                        } else {
-                            listOf(
-                                GlassTokens.AccentStart,
-                                GlassTokens.AccentEnd
-                            )
-                        }
-                        // Fluid liquid progress capsule
+                        val activeColor = if (isWarning) GlassTokens.IosRed else GlassTokens.IosBlue
+                        // Apple Solid / Subtle Vibrant Progress Bar
                         drawRoundRect(
                             brush = Brush.horizontalGradient(
-                                colors = gradientColors,
+                                colors = listOf(
+                                    activeColor,
+                                    if (isWarning) GlassTokens.IosRed else GlassTokens.IosTeal
+                                ),
                                 startX = 0f,
                                 endX = size.width
                             ),
                             size = Size(activeWidth, size.height),
-                            cornerRadius = CornerRadius(size.height / 2, size.height / 2)
-                        )
-                        // Specular gloss surface sheen
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.42f),
-                                    Color.Transparent
-                                )
-                            ),
-                            size = Size(activeWidth, size.height * 0.48f),
                             cornerRadius = CornerRadius(size.height / 2, size.height / 2)
                         )
                     }
@@ -467,7 +435,7 @@ fun ABCompareBar(
             .fillMaxWidth()
             .floatingGlass(reduceGlass)
             .clickable { onToggle() }
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 11.dp)
             .testTag("ab_compare_button")
     ) {
         Row(
@@ -476,23 +444,19 @@ fun ABCompareBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Apple Control Center Circular Accessory Pill
                 Box(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
                         .background(
-                            if (isBypassed) SolidColor(Color.White.copy(alpha = 0.12f))
-                            else Brush.verticalGradient(
-                                listOf(
-                                    GlassTokens.AccentStart.copy(alpha = 0.35f),
-                                    GlassTokens.AccentEnd.copy(alpha = 0.20f)
-                                )
-                            )
+                            if (isBypassed) Color(0xFF2C2C2E)
+                            else GlassTokens.IosBlue.copy(alpha = 0.22f)
                         )
                         .border(
                             1.dp,
-                            if (isBypassed) Color.White.copy(alpha = 0.20f)
-                            else GlassTokens.AccentEnd.copy(alpha = 0.60f),
+                            if (isBypassed) Color.White.copy(alpha = 0.12f)
+                            else GlassTokens.IosBlue.copy(alpha = 0.65f),
                             CircleShape
                         ),
                     contentAlignment = Alignment.Center
@@ -500,47 +464,47 @@ fun ABCompareBar(
                     Icon(
                         imageVector = Icons.Default.CompareArrows,
                         contentDescription = "A/B Compare",
-                        tint = if (isBypassed) Color.White.copy(alpha = 0.7f) else GlassTokens.AccentEnd,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosBlue,
+                        modifier = Modifier.size(19.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = if (isBypassed) "A/B: Original Raw Sound" else "A/B: Restored Daydream Audio",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isBypassed) Color.White.copy(alpha = 0.8f) else GlassTokens.AccentEnd
+                        text = if (isBypassed) "Original Raw Sound (Bypass)" else "Daydream Restored Audio",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isBypassed) GlassTokens.TextPrimary else GlassTokens.IosBlue
                     )
                     Text(
-                        text = if (isBypassed) "Bypass active — tap to hear restoration" else "Tap to instantly hear original unprocessed source",
+                        text = if (isBypassed) "Bypass active — tap for instant <50ms restoration" else "Tap to instantly audit unprocessed raw input",
                         fontSize = 11.sp,
                         color = GlassTokens.TextSecondary
                     )
                 }
             }
 
-            // Status Badge
+            // Apple iOS Status Capsule
             Box(
                 modifier = Modifier
                     .clip(GlassTokens.radiusPill)
                     .background(
-                        if (isBypassed) Color.White.copy(alpha = 0.10f)
-                        else GlassTokens.AccentSafe.copy(alpha = 0.18f)
+                        if (isBypassed) Color.White.copy(alpha = 0.08f)
+                        else GlassTokens.IosGreen.copy(alpha = 0.18f)
                     )
                     .border(
                         1.dp,
-                        if (isBypassed) Color.White.copy(alpha = 0.22f)
-                        else GlassTokens.AccentSafe.copy(alpha = 0.70f),
+                        if (isBypassed) Color.White.copy(alpha = 0.16f)
+                        else GlassTokens.IosGreen.copy(alpha = 0.60f),
                         GlassTokens.radiusPill
                     )
-                    .padding(horizontal = 12.dp, vertical = 5.dp)
+                    .padding(horizontal = 11.dp, vertical = 4.dp)
             ) {
                 Text(
                     text = if (isBypassed) "RAW" else "ACTIVE",
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isBypassed) Color.White.copy(alpha = 0.75f) else GlassTokens.AccentSafe
+                    color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosGreen
                 )
             }
         }
@@ -548,7 +512,8 @@ fun ABCompareBar(
 }
 
 /**
- * Now Playing Bar with live playback controls and spectrum visualizer
+ * Apple Music MiniPlayer (OpenDesign Apple Design System & HIG)
+ * 58dp floating frosted capsule, squircle artwork, SF Pro typography, and live mini EQ.
  */
 @Composable
 fun NowPlayingGlassBar(
@@ -563,94 +528,98 @@ fun NowPlayingGlassBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .raisedGlass(reduceGlass)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .clip(GlassTokens.radiusLg)
+            .background(
+                if (reduceGlass) Color(0xFF1C1C1E)
+                else Color(0xFF1C1C1E).copy(alpha = 0.94f)
+            )
+            .border(
+                0.8.dp,
+                Color.White.copy(alpha = 0.16f),
+                GlassTokens.radiusLg
+            )
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Track Info
+            // Track Info with Apple Squircle Album Art
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Mini album / tape icon
                 Box(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(GlassTokens.radiusSm)
-                        .background(GlassTokens.AccentGradient)
-                        .border(1.dp, Color.White.copy(alpha = 0.35f), GlassTokens.radiusSm),
+                        .background(Color(0xFF2C2C2E))
+                        .border(0.6.dp, Color.White.copy(alpha = 0.20f), GlassTokens.radiusSm),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.ic_daydream_logo),
                         contentDescription = "Track Art",
-                        modifier = Modifier.size(36.dp).clip(GlassTokens.radiusSm)
+                        modifier = Modifier.size(38.dp).clip(GlassTokens.radiusSm)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(11.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = track?.title ?: "No Track Selected",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         color = GlassTokens.TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = track?.era ?: "Demo Engine",
+                        text = track?.era ?: "Lossless DSP Engine",
                         fontSize = 11.sp,
-                        color = GlassTokens.AccentEnd,
+                        fontWeight = FontWeight.Normal,
+                        color = GlassTokens.IosTeal,
                         maxLines = 1
                     )
                 }
             }
 
-            // Live 8-Band Visualizer (Apple Fluid Spectrum)
+            // Live 6-Band Apple Music Equalizer
             Row(
                 modifier = Modifier
-                    .padding(horizontal = 8.dp)
-                    .height(28.dp),
+                    .padding(horizontal = 10.dp)
+                    .height(24.dp),
                 verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.5.dp)
             ) {
-                val barBrush = Brush.verticalGradient(
-                    listOf(
-                        GlassTokens.AccentEnd,
-                        GlassTokens.AccentStart
-                    )
-                )
                 spectrum.take(6).forEach { level ->
-                    val barHeight = (level * 24f).coerceIn(4f, 24f)
+                    val barHeight = (level * 22f).coerceIn(3.5f, 22f)
                     Box(
                         modifier = Modifier
-                            .width(3.5.dp)
+                            .width(3.dp)
                             .height(barHeight.dp)
                             .clip(GlassTokens.radiusPill)
                             .background(
-                                if (isPlaying) barBrush else SolidColor(Color.White.copy(alpha = 0.20f))
+                                if (isPlaying) SolidColor(GlassTokens.IosBlue)
+                                else SolidColor(Color.White.copy(alpha = 0.18f))
                             )
                     )
                 }
             }
 
-            // Playback controls
+            // Playback controls (Apple SF style)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = onTogglePlay,
-                    modifier = Modifier.size(38.dp).testTag("play_pause_button")
+                    modifier = Modifier.size(36.dp).testTag("play_pause_button")
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = GlassTokens.TextPrimary,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
                 IconButton(
@@ -661,7 +630,7 @@ fun NowPlayingGlassBar(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next Track",
                         tint = GlassTokens.TextSecondary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(19.dp)
                     )
                 }
             }
@@ -670,7 +639,8 @@ fun NowPlayingGlassBar(
 }
 
 /**
- * Plain-language explanation popover dialog (PRD Section 5)
+ * Apple iOS Modal Sheet Tooltip (OpenDesign Apple Design System & HIG)
+ * Features an authentic drag grabber, inset grouped content, and Apple Blue Done action.
  */
 @Composable
 fun BandTooltipDialog(
@@ -680,30 +650,47 @@ fun BandTooltipDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column {
-                    Text(
-                        text = band.title,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.AccentEnd
-                    )
-                    Text(
-                        text = band.frequencyRange,
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = GlassTokens.TextSecondary
-                    )
+                // Apple Modal Sheet Drag Indicator Grabber
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(5.dp)
+                        .clip(GlassTokens.radiusPill)
+                        .background(Color(0xFF5A5A5E))
+                        .padding(bottom = 12.dp)
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = band.title,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.TextPrimary
+                        )
+                        Text(
+                            text = band.frequencyRange,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = GlassTokens.IosTeal
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = GlassTokens.TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         },
@@ -712,34 +699,39 @@ fun BandTooltipDialog(
                 Text(
                     text = band.plainDescription,
                     fontSize = 14.sp,
-                    color = GlassTokens.TextPrimary
+                    color = GlassTokens.TextPrimary,
+                    lineHeight = 20.sp
                 )
+                // Apple Inset Grouped Callout Row 1: When to use
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(GlassTokens.radiusSm)
-                        .background(GlassTokens.AccentSafe.copy(alpha = 0.12f))
-                        .border(1.dp, GlassTokens.AccentSafe.copy(alpha = 0.3f), GlassTokens.radiusSm)
-                        .padding(10.dp)
+                        .background(GlassTokens.IosGreen.copy(alpha = 0.12f))
+                        .border(0.8.dp, GlassTokens.IosGreen.copy(alpha = 0.35f), GlassTokens.radiusSm)
+                        .padding(12.dp)
                 ) {
                     Text(
                         text = "💡 When to use: ${band.fixTip}",
                         fontSize = 13.sp,
-                        color = GlassTokens.AccentSafe
+                        fontWeight = FontWeight.Medium,
+                        color = GlassTokens.IosGreen
                     )
                 }
+                // Apple Inset Grouped Callout Row 2: Caution
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(GlassTokens.radiusSm)
-                        .background(GlassTokens.AccentWarning.copy(alpha = 0.12f))
-                        .border(1.dp, GlassTokens.AccentWarning.copy(alpha = 0.3f), GlassTokens.radiusSm)
-                        .padding(10.dp)
+                        .background(GlassTokens.IosRed.copy(alpha = 0.12f))
+                        .border(0.8.dp, GlassTokens.IosRed.copy(alpha = 0.35f), GlassTokens.radiusSm)
+                        .padding(12.dp)
                 ) {
                     Text(
                         text = "⚠️ Watch out: ${band.excessiveWarning}",
                         fontSize = 13.sp,
-                        color = GlassTokens.AccentWarning
+                        fontWeight = FontWeight.Medium,
+                        color = GlassTokens.IosRed
                     )
                 }
             }
@@ -747,24 +739,21 @@ fun BandTooltipDialog(
         confirmButton = {
             Button(
                 onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
-                shape = GlassTokens.radiusPill
+                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
+                shape = GlassTokens.radiusPill,
+                modifier = Modifier.padding(bottom = 4.dp)
             ) {
-                Text("Got It", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Done", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         },
-        containerColor = Color(0xFF101522),
-        shape = GlassTokens.radiusLg
+        containerColor = Color(0xFF1C1C1E),
+        shape = GlassTokens.radiusXl
     )
 }
 
 /**
- * Home-page spectrum visualizer - a larger, dedicated display than the tiny
- * 6-bar strip in NowPlayingGlassBar. Backed by AudioEngine's real 8-band
- * bandpass analysis (per-frequency energy of the actual processed output),
- * not a fabricated approximation. Bar color sweeps warm-to-cool across the
- * low-to-high frequency bands, tying into the Sonic Glass material identity
- * (PRD 22.7) rather than being a generic uniform-colored bar chart.
+ * Apple Music Lossless EQ Spectrum Visualizer
+ * Real 8-band bandpass analysis rendered as Apple rounded pill frequency bars.
  */
 @Composable
 fun HomeSpectrumVisualizer(
@@ -776,7 +765,9 @@ fun HomeSpectrumVisualizer(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .raisedGlass(reduceGlass)
+            .clip(GlassTokens.radiusLg)
+            .background(GlassTokens.IosGroupedPrimary)
+            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusLg)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Column {
@@ -785,15 +776,25 @@ fun HomeSpectrumVisualizer(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (isPlaying) GlassTokens.IosGreen else GlassTokens.TextSecondary)
+                    )
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Text(
+                        text = "Real-Time Spectrum",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextPrimary
+                    )
+                }
                 Text(
-                    text = "Live Spectrum",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GlassTokens.TextPrimary
-                )
-                Text(
-                    text = if (isPlaying) "Rumble → Air" else "Paused",
+                    text = if (isPlaying) "31Hz — 16kHz" else "Playback Paused",
                     fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
                     color = GlassTokens.TextSecondary
                 )
             }
@@ -801,7 +802,7 @@ fun HomeSpectrumVisualizer(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp),
+                    .height(60.dp),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -809,16 +810,15 @@ fun HomeSpectrumVisualizer(
                 for (index in spectrum.indices) {
                     val rawLevel = spectrum[index]
                     val animatedLevel by animateFloatAsState(
-                        targetValue = if (isPlaying) rawLevel.coerceIn(0.03f, 1f) else 0.03f,
+                        targetValue = if (isPlaying) rawLevel.coerceIn(0.04f, 1f) else 0.04f,
                         animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing),
-                        label = "spectrum_bar_$index"
+                        label = "apple_spectrum_bar_$index"
                     )
-                    // Warm (bass) -> cool (treble) sweep across bands, so the bar
-                    // set doubles as a rough frequency-position indicator.
+                    // Apple Spectral gradient: Warm Amber (Bass) to Electric Teal (Treble)
                     val fraction = index.toFloat() / (bandCount - 1).coerceAtLeast(1)
                     val barColor = androidx.compose.ui.graphics.lerp(
-                        Color(0xFFFF9F0A), // warm amber for low bands
-                        Color(0xFF64D2FF), // cool cyan for high bands
+                        GlassTokens.IosOrange,
+                        GlassTokens.IosTeal,
                         fraction
                     )
                     Box(
@@ -828,7 +828,7 @@ fun HomeSpectrumVisualizer(
                             .clip(GlassTokens.radiusPill)
                             .background(
                                 if (isPlaying) SolidColor(barColor)
-                                else SolidColor(Color.White.copy(alpha = 0.15f))
+                                else SolidColor(Color.White.copy(alpha = 0.12f))
                             )
                     )
                 }
@@ -836,3 +836,120 @@ fun HomeSpectrumVisualizer(
         }
     }
 }
+
+/**
+ * Apple iOS Segmented Control (OpenDesign Apple Design System & HIG)
+ * Recessed container with sliding rounded thumb, clean typography, and tactile feel.
+ */
+@Composable
+fun <T> IosSegmentedControl(
+    items: List<T>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    label: (T) -> String,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(34.dp)
+            .clip(GlassTokens.radiusMd)
+            .background(Color(0xFF161618))
+            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusMd)
+            .padding(2.dp)
+    ) {
+        val tabWidth = maxWidth / items.size
+        val animatedOffset by animateDpAsState(
+            targetValue = tabWidth * selectedIndex,
+            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+            label = "ios_seg_offset"
+        )
+        // Sliding active white/tinted pill
+        Box(
+            modifier = Modifier
+                .offset(x = animatedOffset)
+                .width(tabWidth)
+                .fillMaxHeight()
+                .clip(GlassTokens.radiusSm)
+                .background(Color(0xFF2C2C2E))
+                .border(0.5.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusSm)
+        )
+        Row(modifier = Modifier.fillMaxSize()) {
+            items.forEachIndexed { index, item ->
+                val isSelected = index == selectedIndex
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(GlassTokens.radiusSm)
+                        .clickable { onSelect(index) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label(item),
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) GlassTokens.TextPrimary else GlassTokens.TextSecondary,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Apple Inset Grouped Section Header (OpenDesign Apple Design System & HIG)
+ * Uppercase small caption header with optional leading icon.
+ */
+@Composable
+fun IosSectionHeader(
+    title: String,
+    subtitle: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = GlassTokens.IosBlue,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = title.uppercase(),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = GlassTokens.TextSecondary,
+                letterSpacing = 0.6.sp
+            )
+        }
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
+                color = GlassTokens.TextMuted,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Apple Inset Grouped Hairline Divider (OpenDesign Apple Design System & HIG)
+ */
+@Composable
+fun IosRowSeparator(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(0.6.dp)
+            .background(GlassTokens.IosSeparator)
+    )
+}
+

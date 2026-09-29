@@ -178,15 +178,15 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            // Notification Banner Toast
+                            // Dynamic Island Notification Pill (Apple HIG)
                             AnimatedVisibility(
                                 visible = uiState.notificationMessage != null,
-                                enter = slideInVertically() + fadeIn(),
-                                exit = slideOutVertically() + fadeOut(),
+                                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
-                                    .padding(top = innerPadding.calculateTopPadding() + 8.dp)
-                                    .padding(horizontal = 24.dp)
+                                    .padding(top = innerPadding.calculateTopPadding() + 4.dp)
+                                    .padding(horizontal = 20.dp)
                             ) {
                                 uiState.notificationMessage?.let { msg ->
                                     LaunchedEffect(msg) {
@@ -196,31 +196,35 @@ class MainActivity : ComponentActivity() {
                                     Box(
                                         modifier = Modifier
                                             .clip(GlassTokens.radiusPill)
-                                            .background(Color(0xFF101624).copy(alpha = 0.95f))
+                                            .background(Color(0xFF161618))
                                             .border(
-                                                1.dp,
-                                                Brush.verticalGradient(
-                                                    listOf(
-                                                        GlassTokens.AccentEnd.copy(alpha = 0.6f),
-                                                        GlassTokens.AccentStart.copy(alpha = 0.2f)
-                                                    )
-                                                ),
+                                                0.8.dp,
+                                                Color.White.copy(alpha = 0.20f),
                                                 GlassTokens.radiusPill
                                             )
-                                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                                            .padding(horizontal = 18.dp, vertical = 9.dp)
                                     ) {
-                                        Text(
-                                            text = msg,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = GlassTokens.AccentEnd
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(7.dp)
+                                                    .clip(CircleShape)
+                                                    .background(GlassTokens.IosBlue)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = msg,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = GlassTokens.TextPrimary
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    }
+                }
 
                     // Diagnostic Wizard Modal Dialog
                     if (uiState.showWizardDialog) {
@@ -236,8 +240,8 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Bottom Floating Glass Navigation Bar (PRD 22.5 & 22.11)
- * 64dp height, floating glass elevation, sliding radius-pill indicator with 250ms ease-standard.
+ * Apple iOS Floating UITabBar (OpenDesign Apple Design System & HIG)
+ * 60dp frosted glass bar, sliding subtle pill indicator, SF Pro icons & typography.
  */
 @Composable
 private fun FloatingGlassNavBar(
@@ -253,45 +257,40 @@ private fun FloatingGlassNavBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .floatingGlass(reduceGlass)
-            .padding(4.dp)
+            .height(60.dp)
+            .clip(GlassTokens.radiusXl)
+            .background(
+                if (reduceGlass) Color(0xFF1C1C1E)
+                else Color(0xFF1C1C1E).copy(alpha = 0.94f)
+            )
+            .border(
+                0.8.dp,
+                Color.White.copy(alpha = 0.16f),
+                GlassTokens.radiusXl
+            )
+            .padding(3.dp)
     ) {
         val tabWidth = maxWidth / tabs.size
         val animatedIndicatorOffset by animateDpAsState(
             targetValue = tabWidth * selectedIndex,
             animationSpec = if (reduceMotion) tween(durationMillis = 0)
-                            else tween(durationMillis = 250, easing = FastOutSlowInEasing),
+                            else tween(durationMillis = 220, easing = FastOutSlowInEasing),
             label = "nav_indicator_offset"
         )
 
-        // Sliding Raised Glass Indicator Pill (PRD 22.5 & 22.11)
+        // Apple Sliding Pill Indicator
         Box(
             modifier = Modifier
                 .offset(x = animatedIndicatorOffset)
                 .width(tabWidth)
                 .fillMaxHeight()
                 .padding(horizontal = 3.dp, vertical = 3.dp)
-                .clip(GlassTokens.radiusPill)
-                .background(
-                    if (reduceGlass) SolidColor(GlassTokens.SolidCardFill)
-                    else Brush.verticalGradient(
-                        listOf(
-                            GlassTokens.AccentStart.copy(alpha = 0.28f),
-                            GlassTokens.AccentEnd.copy(alpha = 0.12f)
-                        )
-                    )
-                )
+                .clip(GlassTokens.radiusLg)
+                .background(Color(0xFF2C2C2E))
                 .border(
-                    1.dp,
-                    if (reduceGlass) SolidColor(GlassTokens.SolidCardBorder)
-                    else Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.45f),
-                            Color.White.copy(alpha = 0.10f)
-                        )
-                    ),
-                    GlassTokens.radiusPill
+                    0.5.dp,
+                    Color.White.copy(alpha = 0.12f),
+                    GlassTokens.radiusLg
                 )
         )
 
@@ -313,7 +312,7 @@ private fun FloatingGlassNavBar(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(GlassTokens.radiusPill)
+                        .clip(GlassTokens.radiusLg)
                         .clickable { onSelectTab(tab) }
                         .testTag("tab_${tab.name.lowercase()}"),
                     contentAlignment = Alignment.Center
@@ -325,15 +324,15 @@ private fun FloatingGlassNavBar(
                         Icon(
                             imageVector = icon,
                             contentDescription = tab.title,
-                            tint = if (isSelected) GlassTokens.AccentEnd else GlassTokens.TextSecondary,
+                            tint = if (isSelected) GlassTokens.IosBlue else GlassTokens.TextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = tab.title,
                             fontSize = 10.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) GlassTokens.AccentEnd else GlassTokens.TextSecondary
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) GlassTokens.IosBlue else GlassTokens.TextSecondary
                         )
                     }
                 }
@@ -341,3 +340,4 @@ private fun FloatingGlassNavBar(
         }
     }
 }
+

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
@@ -40,11 +41,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.OutputDevice
+import com.example.ui.components.IosRowSeparator
+import com.example.ui.components.IosSectionHeader
+import com.example.ui.components.IosSegmentedControl
 import com.example.ui.theme.GlassTokens
-import com.example.ui.theme.baseGlass
+import com.example.ui.theme.iosInsetGroupedCard
 import com.example.viewmodel.DaydreamUiState
 import com.example.viewmodel.DaydreamViewModel
 
+/**
+ * Settings Screen (Apple iOS Inset Grouped HIG):
+ * - Output Device Profiles with Apple SF checkmark rows
+ * - System Audio Routing & OEM hooking status
+ * - Display & Accessibility options
+ * - Signal Chain Architecture
+ */
 @Composable
 fun SettingsScreen(
     viewModel: DaydreamViewModel,
@@ -57,119 +68,95 @@ fun SettingsScreen(
             .padding(paddingValues)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Header
+        // Apple Large Title Header
         item {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null,
-                        tint = GlassTokens.AccentStart,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Settings & Devices",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                }
+            Column(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) {
+                Text(
+                    text = "Settings",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextPrimary,
+                    letterSpacing = (-0.6).sp
+                )
                 Text(
                     text = "Acoustic calibration, accessibility & signal chain",
                     fontSize = 13.sp,
-                    color = GlassTokens.TextSecondary
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
 
-        // Section 1: Output Device Profiles (PRD 6.4)
+        // Section 1: Output Device Profiles (Apple Inset Grouped)
         item {
+            IosSectionHeader(
+                title = "Output Device Profiles",
+                subtitle = "Auto-calibrates baseline Space & Punch for connected gear"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .baseGlass(uiState.reduceGlass)
-                    .padding(16.dp)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
             ) {
                 Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Headphones,
-                            contentDescription = null,
-                            tint = GlassTokens.AccentStart,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Output Device Profiles",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GlassTokens.TextPrimary
-                        )
-                    }
-                    Text(
-                        text = "Auto-calibrates baseline space and punch for your connected gear",
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
-                    )
-
-                    OutputDevice.entries.forEach { device ->
+                    val devices = OutputDevice.entries.toList()
+                    devices.forEachIndexed { index, device ->
                         val isSelected = uiState.currentDevice == device
-                        Box(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clip(GlassTokens.radiusMd)
-                                .background(
-                                    if (isSelected) GlassTokens.AccentStart.copy(alpha = 0.2f)
-                                    else Color.White.copy(alpha = 0.05f)
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) GlassTokens.AccentStart else Color.White.copy(alpha = 0.1f),
-                                    GlassTokens.radiusMd
-                                )
                                 .clickable { viewModel.setOutputDevice(device) }
-                                .padding(12.dp)
-                                .testTag("device_option_${device.name.lowercase()}")
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("device_option_${device.name.lowercase()}"),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Headphones,
+                                    contentDescription = null,
+                                    tint = if (isSelected) GlassTokens.IosBlue else GlassTokens.TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Text(
                                     text = device.displayName,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                    fontSize = 15.sp,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (isSelected) GlassTokens.TextPrimary else GlassTokens.TextSecondary
                                 )
-                                if (isSelected) {
-                                    Text(
-                                        text = "SELECTED",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = GlassTokens.AccentStart
-                                    )
-                                }
                             }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = GlassTokens.IosBlue,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        if (index < devices.size - 1) {
+                            IosRowSeparator(modifier = Modifier.padding(start = 48.dp))
                         }
                     }
                 }
             }
         }
 
-        // Section 1.5: System-Wide Mode status (PRD 12.1 addendum)
-        // Honest, plain-language disclosure of the session-0 global hook's real
-        // behavior - it's a best-effort, unofficial mechanism, not a guarantee.
+        // Section 2: System-Wide Mode Status
         item {
+            IosSectionHeader(
+                title = "System Audio Routing",
+                subtitle = "Session-0 global hook and OEM compatibility status"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .baseGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
@@ -177,57 +164,57 @@ fun SettingsScreen(
                         Icon(
                             imageVector = if (uiState.isGlobalHookActive) Icons.Default.CheckCircle else Icons.Default.WarningAmber,
                             contentDescription = null,
-                            tint = if (uiState.isGlobalHookActive) GlassTokens.AccentSafe else GlassTokens.AccentWarning,
+                            tint = if (uiState.isGlobalHookActive) GlassTokens.IosGreen else GlassTokens.IosOrange,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "System-Wide Mode",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = if (uiState.isGlobalHookActive) "System-Wide Mode Active" else "Limited System Routing",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = GlassTokens.TextPrimary
                         )
                     }
                     Text(
                         text = if (uiState.isGlobalHookActive) {
-                            "Active on this device — effects reach most apps' audio, including music and video players. Some apps that use hardware-accelerated playback (a few video apps included) may still bypass this even while it's active."
+                            "Active on this device — effects process audio from other media apps. Apps with hardware-accelerated playback may occasionally bypass routing."
                         } else {
-                            "Not supported on this device or output route. Your phone/ROM doesn't allow apps to hook the master audio output this way — this is a device limitation, not a bug. Effects will still work with cooperating apps (Spotify and most local music players) via a different, guaranteed method. Try switching output (e.g. wired or Bluetooth headphones) — some devices only block this on the built-in speaker."
+                            "Not supported on this device or output route. Your device ROM blocks master output hooking. Effects continue working for cooperating apps (Spotify, YouTube Music) via broadcast receivers."
                         },
                         fontSize = 12.sp,
                         color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    SettingToggleRow(
+                        title = "Legacy Mode (In-App Player)",
+                        description = "Bypasses system-wide broadcast receiver and routes playback through internal engine. Recommended if OEM battery optimization suppresses audio sessions.",
+                        checked = uiState.isLegacyMode,
+                        onCheckedChange = { viewModel.toggleLegacyMode() },
+                        testTag = "setting_legacy_mode"
                     )
                 }
             }
         }
 
-        // Section 2: Accessibility & Display Options (PRD 22.3, 22.13)
+        // Section 3: Display & Accessibility Options
         item {
+            IosSectionHeader(
+                title = "Accessibility & Display",
+                subtitle = "Legibility, contrast and animation controls"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .baseGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Accessibility,
-                            contentDescription = null,
-                            tint = GlassTokens.AccentStart,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Display & Accessibility",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GlassTokens.TextPrimary
-                        )
-                    }
-
-                    // Show Technical Values Toggle (PRD Section 5)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Show Technical Values Toggle
                     SettingToggleRow(
                         title = "Show Technical Values",
                         description = "Displays precise Hz frequencies, Q values, and ratios beside plain-language sliders.",
@@ -236,7 +223,9 @@ fun SettingsScreen(
                         testTag = "setting_technical_values"
                     )
 
-                    // Reduce Glass Toggle (PRD 22.3)
+                    IosRowSeparator()
+
+                    // Reduce Glass Toggle
                     SettingToggleRow(
                         title = "Reduce Glass (High Contrast)",
                         description = "Replaces translucent frosted glass with solid high-contrast panels for maximum legibility.",
@@ -245,124 +234,86 @@ fun SettingsScreen(
                         testTag = "setting_reduce_glass"
                     )
 
-                    // Reduce Motion Toggle (PRD 22.12)
+                    IosRowSeparator()
+
+                    // Reduce Motion Toggle
                     SettingToggleRow(
                         title = "Reduce Motion",
-                        description = "Disables audio-reactive Sonic Glass background ripples and animated transitions.",
+                        description = "Disables audio-reactive chromatic diffusion and animated transitions.",
                         checked = uiState.reduceMotion,
                         onCheckedChange = { viewModel.toggleReduceMotion() },
                         testTag = "setting_reduce_motion"
                     )
 
+                    IosRowSeparator()
+
                     // Re-run Onboarding Tour
                     Button(
                         onClick = { viewModel.restartOnboarding() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.10f)),
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosSeparator),
                         shape = GlassTokens.radiusPill,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     ) {
-                        Text("Re-run Onboarding Tour", color = GlassTokens.TextPrimary, fontSize = 13.sp)
+                        Text("Re-run Onboarding Tour", color = GlassTokens.IosBlue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
         }
 
-        // Section 3: Signal Chain Architecture (PRD 8.1 & 8.3)
+        // Section 4: Signal Chain Architecture
         item {
+            IosSectionHeader(
+                title = "Signal Chain Architecture",
+                subtitle = "6-stage real-time DSP pipeline strictly ordered (PRD 8.1)"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .baseGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = GlassTokens.AccentStart,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Audio Signal Chain (PRD 8.1)",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GlassTokens.TextPrimary
-                        )
-                    }
                     Text(
-                        text = "Rigorous real-time ordering strictly enforced to prevent noise amplification:",
-                        fontSize = 12.sp,
+                        text = "MAINS FREQUENCY NOTCH",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
                     )
 
-                    // Mains Hum Region Selector (50Hz vs 60Hz)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "De-Hum Mains Frequency",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = GlassTokens.TextPrimary
-                            )
-                            Text(
-                                text = "50Hz (UK/EU/India/Asia) vs 60Hz (Americas)",
-                                fontSize = 11.sp,
-                                color = GlassTokens.TextSecondary
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(50, 60).forEach { freq ->
-                                val isSelected = uiState.humFrequency == freq
-                                Box(
-                                    modifier = Modifier
-                                        .clip(GlassTokens.radiusPill)
-                                        .background(if (isSelected) GlassTokens.AccentStart else Color.White.copy(alpha = 0.08f))
-                                        .clickable { viewModel.setHumFrequency(freq) }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "${freq}Hz",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.White else GlassTokens.TextSecondary
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Legacy Mode Fallback Toggle (PRD §9.0 & FR-11)
-                    SettingToggleRow(
-                        title = "Legacy Mode (In-App Player)",
-                        description = "Bypasses system-wide broadcast receiver and routes playback through in-app engine. Recommended for aggressive OEM battery savers (MIUI, OneUI, ColorOS) that suppress audio session broadcasts.",
-                        checked = uiState.isLegacyMode,
-                        onCheckedChange = { viewModel.toggleLegacyMode() },
-                        testTag = "setting_legacy_mode"
+                    val freqs = listOf(50 to "50Hz (EU/Asia/UK)", 60 to "60Hz (US/Americas)")
+                    val selectedFreqIndex = freqs.indexOfFirst { it.first == uiState.humFrequency }.let { if (it >= 0) it else 0 }
+                    IosSegmentedControl(
+                        items = freqs,
+                        selectedIndex = selectedFreqIndex,
+                        onSelect = { index -> viewModel.setHumFrequency(freqs[index].first) },
+                        label = { it.second }
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    Text(
+                        text = "DSP STAGES IN SIGNAL ORDER",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
 
                     val stages = listOf(
-                        "1. Noise Reduction (Adaptive High-Shelf Gate, Multi-Harmonic De-Hum, Derivative Spike De-Crackle)",
-                        "2. Equalizer (5-Band Peaking & Shelving IIR / 10-Band Parametric EQ)",
-                        "3. Clarity Macro (3-Band Crossover, High-Mid Harmonic Saturation & Dynamic De-Harsher)",
-                        "4. Dynamics / Punch (RMS Soft-Knee Compressor with Makeup Gain)",
-                        "5. Virtualizer / Space (Transaural Crossfeed Decorrelation with Mono Capping)",
-                        "6. Loudness Booster + True-Peak Soft Limiter (Anti-Clipping)"
+                        "1. Noise Reduction (Spectral Gate, Notch, De-Crackle)",
+                        "2. Equalizer (5-Band Plain / 10-Band Parametric IIR)",
+                        "3. Clarity Macro (Multiband Harmonic Exciter)",
+                        "4. Dynamics / Punch (RMS Soft-Knee Compressor)",
+                        "5. Virtualizer / Space (HRTF Crossfeed Decorrelation)",
+                        "6. Loudness Booster (True-Peak Soft Limiter)"
                     )
 
-                    stages.forEach { stage ->
+                    stages.forEachIndexed { i, stage ->
                         Text(
                             text = stage,
                             fontSize = 12.sp,
@@ -375,25 +326,27 @@ fun SettingsScreen(
             }
         }
 
-        // Reset All Controls Button
+        // Section 5: Reset All Controls Button
         item {
             Button(
                 onClick = { viewModel.resetAllToFlat() },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
+                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedPrimary),
+                border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosRed.copy(alpha = 0.5f)),
                 shape = GlassTokens.radiusPill,
                 modifier = Modifier.fillMaxWidth().testTag("reset_all_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.RestartAlt,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = GlassTokens.IosRed,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Reset All Sliders to Flat",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
+                    color = GlassTokens.IosRed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
                 )
             }
         }
@@ -423,7 +376,9 @@ private fun SettingToggleRow(
             Text(
                 text = description,
                 fontSize = 11.sp,
-                color = GlassTokens.TextSecondary
+                color = GlassTokens.TextSecondary,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 1.dp)
             )
         }
         Switch(
@@ -431,9 +386,10 @@ private fun SettingToggleRow(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = GlassTokens.AccentStart
+                checkedTrackColor = GlassTokens.IosGreen
             ),
             modifier = Modifier.testTag(testTag)
         )
     }
 }
+

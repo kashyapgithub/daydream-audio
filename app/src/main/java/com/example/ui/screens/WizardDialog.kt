@@ -15,9 +15,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Hearing
@@ -57,32 +60,69 @@ fun WizardDiagnosisDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = GlassTokens.AccentEnd,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "What's wrong with your sound?",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = GlassTokens.TextSecondary
-                    )
+                // Apple Modal Sheet Grabber Handle
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(2.5.dp))
+                        .background(Color(0xFF5A5A5E))
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(GlassTokens.IosBlue.copy(alpha = 0.18f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = GlassTokens.IosBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Audio Diagnosis",
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GlassTokens.TextPrimary
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(GlassTokens.IosGroupedSecondary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = GlassTokens.TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
             }
         },
@@ -92,12 +132,15 @@ fun WizardDiagnosisDialog(
                     text = "Pick the symptom you hear in plain words. Daydream will diagnose and calibrate the signal chain automatically.",
                     fontSize = 13.sp,
                     color = GlassTokens.TextSecondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(bottom = 14.dp)
                 )
 
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().height(320.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(340.dp)
                 ) {
                     items(AudioComplaint.entries) { complaint ->
                         val isSelected = selectedComplaint == complaint
@@ -113,52 +156,73 @@ fun WizardDiagnosisDialog(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(GlassTokens.radiusMd)
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(
-                                    if (isSelected) GlassTokens.AccentStart.copy(alpha = 0.20f)
-                                    else Color.White.copy(alpha = 0.06f)
+                                    if (isSelected) GlassTokens.IosBlue.copy(alpha = 0.16f)
+                                    else GlassTokens.IosGroupedSecondary
                                 )
                                 .border(
-                                    1.5.dp,
-                                    if (isSelected) GlassTokens.AccentStart
-                                    else Color.White.copy(alpha = 0.12f),
-                                    GlassTokens.radiusMd
+                                    width = if (isSelected) 1.5.dp else 0.5.dp,
+                                    color = if (isSelected) GlassTokens.IosBlue else GlassTokens.IosSeparator,
+                                    shape = RoundedCornerShape(14.dp)
                                 )
                                 .clickable { selectedComplaint = complaint }
-                                .padding(12.dp)
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
                                 .testTag("wizard_option_${complaint.name.lowercase()}")
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
-                                        .clip(GlassTokens.radiusSm)
+                                        .clip(RoundedCornerShape(9.dp))
                                         .background(
-                                            if (isSelected) GlassTokens.AccentStart
-                                            else Color.White.copy(alpha = 0.1f)
+                                            if (isSelected) GlassTokens.IosBlue
+                                            else GlassTokens.IosGroupedTertiary
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = icon,
                                         contentDescription = null,
-                                        tint = if (isSelected) Color.White else GlassTokens.AccentStart,
-                                        modifier = Modifier.size(20.dp)
+                                        tint = if (isSelected) Color.White else GlassTokens.TextPrimary,
+                                        modifier = Modifier.size(19.dp)
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = complaint.label,
                                         fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) GlassTokens.IosBlue else GlassTokens.TextPrimary
                                     )
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = complaint.description,
                                         fontSize = 12.sp,
-                                        color = GlassTokens.TextSecondary
+                                        color = GlassTokens.TextSecondary,
+                                        lineHeight = 16.sp
                                     )
+                                }
+                                if (isSelected) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .background(GlassTokens.IosBlue),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -173,28 +237,39 @@ fun WizardDiagnosisDialog(
                 },
                 enabled = selectedComplaint != null,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = GlassTokens.AccentStart,
-                    disabledContainerColor = Color.White.copy(alpha = 0.1f)
+                    containerColor = GlassTokens.IosBlue,
+                    disabledContainerColor = GlassTokens.IosGroupedSecondary
                 ),
                 shape = GlassTokens.radiusPill,
-                modifier = Modifier.testTag("wizard_apply_button")
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("wizard_apply_button")
             ) {
                 Text(
                     text = "Apply Smart Fix",
                     color = if (selectedComplaint != null) Color.White else GlassTokens.TextMuted,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         },
         dismissButton = {
             Button(
                 onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Cancel", color = GlassTokens.TextSecondary)
+                Text(
+                    text = "Cancel",
+                    color = GlassTokens.IosBlue,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         },
-        containerColor = Color(0xFF101522),
-        shape = GlassTokens.radiusLg
+        containerColor = GlassTokens.IosGroupedPrimary,
+        shape = RoundedCornerShape(26.dp)
     )
 }
+

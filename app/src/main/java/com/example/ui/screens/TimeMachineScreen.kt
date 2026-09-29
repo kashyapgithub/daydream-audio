@@ -48,8 +48,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.TimeMachinePreset
 import com.example.ui.components.ABCompareBar
+import com.example.ui.components.IosRowSeparator
+import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.LiquidSlider
 import com.example.ui.theme.GlassTokens
+import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
 import com.example.viewmodel.DaydreamUiState
 import com.example.viewmodel.DaydreamViewModel
@@ -66,35 +69,28 @@ fun TimeMachineScreen(
             .padding(paddingValues)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Header
+        // Apple Large Title Header
         item {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.History,
-                        contentDescription = null,
-                        tint = GlassTokens.AccentStart,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Time Machine Presets",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary
-                    )
-                }
+            Column(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) {
                 Text(
-                    text = "Restoration tailored to each era's medium (tape, vinyl, broadcast, early MP3)",
+                    text = "Time Machine",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextPrimary,
+                    letterSpacing = (-0.6).sp
+                )
+                Text(
+                    text = "Restoration tailored to each era's medium (tape, vinyl, broadcast, MP3)",
                     fontSize = 13.sp,
-                    color = GlassTokens.TextSecondary
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
 
-        // Prominent A/B Bar
+        // Prominent Apple A/B Bar
         item {
             ABCompareBar(
                 isBypassed = uiState.isBypassed,
@@ -105,10 +101,15 @@ fun TimeMachineScreen(
 
         // Section 1: Reverse Time Machine ("Vintage-ify", PRD 6.13)
         item {
+            IosSectionHeader(
+                title = "Vintage-ify Engine",
+                subtitle = "Make modern digital audio sound like an analog memory"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .padding(16.dp)
             ) {
                 Column {
@@ -117,27 +118,19 @@ fun TimeMachineScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Radio,
-                                contentDescription = null,
-                                tint = GlassTokens.AccentStart,
-                                modifier = Modifier.size(22.dp)
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "Vintage-ify (Reverse Engine)",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextPrimary
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = "Vintage-ify (Reverse Engine)",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GlassTokens.TextPrimary
-                                )
-                                Text(
-                                    text = "Make modern audio sound like an analog memory",
-                                    fontSize = 12.sp,
-                                    color = GlassTokens.TextSecondary
-                                )
-                            }
+                            Text(
+                                text = "Synthesize analog tape warble and vinyl surface dust",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
                         }
 
                         Switch(
@@ -145,21 +138,14 @@ fun TimeMachineScreen(
                             onCheckedChange = { viewModel.setVintageMode(it) },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor = GlassTokens.AccentStart
+                                checkedTrackColor = GlassTokens.IosGreen
                             ),
                             modifier = Modifier.testTag("vintage_mode_switch")
                         )
                     }
 
                     if (uiState.isVintageMode) {
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "Analog Tape & Turntable Simulation",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = GlassTokens.AccentStart
-                        )
+                        IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
 
                         // Wow & Flutter Slider (PRD 6.13)
                         LiquidSlider(
@@ -170,8 +156,11 @@ fun TimeMachineScreen(
                             unit = "%",
                             technicalValue = "LFO Dual Delay Pitch Mod",
                             showTechnical = uiState.showTechnicalValues,
+                            accentColor = GlassTokens.IosOrange,
                             reduceGlass = uiState.reduceGlass
                         )
+
+                        IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                         // Synthesized Noise Slider (PRD 6.13)
                         LiquidSlider(
@@ -182,40 +171,40 @@ fun TimeMachineScreen(
                             unit = "%",
                             technicalValue = "Reverse Filter Noise Synthesis",
                             showTechnical = uiState.showTechnicalValues,
+                            accentColor = GlassTokens.IosTeal,
                             reduceGlass = uiState.reduceGlass
                         )
                     }
                 }
             }
         }
-
-        // Section 2: Time Machine Era Presets & Memory Postcard (PRD 6.11 & 6.14)
+        // Section 2: Time Machine Era Presets & Memory Postcard (Apple Music Curated Stations)
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Historical Era Presets",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GlassTokens.TextPrimary
+                IosSectionHeader(
+                    title = "Historical Era Presets",
+                    subtitle = "Cupertino-calibrated restoration profiles",
+                    modifier = Modifier.weight(1f)
                 )
 
                 Button(
                     onClick = { viewModel.openMemoryPostcardDialog() },
-                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
                     shape = GlassTokens.radiusPill,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Share,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Share Postcard", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Share", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
@@ -226,12 +215,12 @@ fun TimeMachineScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .raisedGlass(uiState.reduceGlass)
+                    .iosInsetGroupedCard(uiState.reduceGlass)
                     .clickable { viewModel.applyTimeMachinePreset(preset) }
                     .border(
-                        1.5.dp,
-                        if (isActive) GlassTokens.AccentStart else Color.White.copy(alpha = 0.12f),
-                        GlassTokens.radiusMd
+                        if (isActive) 1.2.dp else 0.8.dp,
+                        if (isActive) GlassTokens.IosBlue else GlassTokens.IosSeparator,
+                        GlassTokens.radiusLg
                     )
                     .padding(16.dp)
                     .testTag("preset_${preset.id}")
@@ -242,17 +231,18 @@ fun TimeMachineScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                             Text(
                                 text = preset.eraTitle,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isActive) GlassTokens.AccentStart else GlassTokens.TextPrimary
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isActive) GlassTokens.IosBlue else GlassTokens.TextPrimary
                             )
                             Text(
                                 text = preset.subtitle,
                                 fontSize = 12.sp,
-                                color = GlassTokens.AccentStart.copy(alpha = 0.8f)
+                                color = if (isActive) GlassTokens.IosBlue.copy(alpha = 0.85f) else GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 1.dp)
                             )
                         }
 
@@ -260,7 +250,7 @@ fun TimeMachineScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(GlassTokens.radiusPill)
-                                    .background(GlassTokens.AccentStart)
+                                    .background(GlassTokens.IosBlue)
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -268,12 +258,12 @@ fun TimeMachineScreen(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = null,
                                         tint = Color.White,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "ACTIVE",
-                                        fontSize = 11.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
@@ -282,17 +272,18 @@ fun TimeMachineScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
                         text = preset.description,
-                        fontSize = 12.sp,
-                        color = GlassTokens.TextSecondary
+                        fontSize = 13.sp,
+                        color = GlassTokens.TextSecondary,
+                        lineHeight = 17.sp
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    // Small badges summarizing preset settings
+                    // Badges summarizing preset settings (Apple Inset Capsules)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -319,6 +310,9 @@ fun TimeMachineScreen(
     }
 }
 
+/**
+ * Apple Modal Sheet Memory Postcard (OpenDesign Apple Design System & HIG)
+ */
 @Composable
 fun MemoryPostcardDialog(
     uiState: DaydreamUiState,
@@ -350,89 +344,88 @@ fun MemoryPostcardDialog(
                     }
                     context.startActivity(Intent.createChooser(sendIntent, "Share Memory Postcard"))
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.AccentStart),
-                shape = GlassTokens.radiusPill
+                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
+                shape = GlassTokens.radiusPill,
+                modifier = Modifier.padding(bottom = 4.dp)
             ) {
-                Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Share to Stories / WhatsApp", fontWeight = FontWeight.Bold)
+                Text("Share to Stories / WhatsApp", fontWeight = FontWeight.Bold, color = Color.White)
             }
         },
         dismissButton = {
-            IconButton(onClick = onDismiss) {
-                Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
+            ) {
+                Text("Done", color = GlassTokens.TextSecondary)
             }
         },
-        containerColor = GlassTokens.SolidCardFill,
+        containerColor = GlassTokens.IosGroupedPrimary,
+        shape = GlassTokens.radiusXl,
         title = {
-            Text(
-                text = "Memory Postcard Export",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = GlassTokens.TextPrimary
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Apple Modal Sheet Grabber
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(5.dp)
+                        .clip(GlassTokens.radiusPill)
+                        .background(Color(0xFF5A5A5E))
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Memory Postcard",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
+                    }
+                }
+            }
         },
         text = {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(GlassTokens.radiusLg)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                GlassTokens.RaisedGlassFill,
-                                GlassTokens.BaseGlassFill
-                            )
-                        )
-                    )
-                    .border(1.dp, GlassTokens.BaseGlassBorder, GlassTokens.radiusLg)
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Postcard Preview Card (9:16 aspect feel)
+                // Postcard Preview Card (Apple Grouped Dark Inset)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(GlassTokens.radiusMd)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color(0xFF141C2B),
-                                    Color(0xFF0C101A),
-                                    Color(0xFF06090E)
-                                )
-                            )
-                        )
-                        .border(
-                            1.dp,
-                            Brush.verticalGradient(
-                                listOf(
-                                    GlassTokens.AccentEnd.copy(alpha = 0.5f),
-                                    GlassTokens.AccentStart.copy(alpha = 0.2f)
-                                )
-                            ),
-                            GlassTokens.radiusMd
-                        )
+                        .clip(GlassTokens.radiusLg)
+                        .background(GlassTokens.IosGroupedSecondary)
+                        .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusLg)
                         .padding(20.dp)
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Top badge
+                        // Top Apple Capsule
                         Box(
                             modifier = Modifier
                                 .clip(GlassTokens.radiusPill)
-                                .background(GlassTokens.AccentStart.copy(alpha = 0.2f))
-                                .border(1.dp, GlassTokens.AccentStart.copy(alpha = 0.5f), GlassTokens.radiusPill)
+                                .background(GlassTokens.IosBlue.copy(alpha = 0.15f))
+                                .border(0.6.dp, GlassTokens.IosBlue.copy(alpha = 0.5f), GlassTokens.radiusPill)
                                 .padding(horizontal = 12.dp, vertical = 4.dp)
                         ) {
                             Text(
                                 text = "DAYDREAM TIME MACHINE",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.AccentEnd,
-                                letterSpacing = 1.sp
+                                color = GlassTokens.IosBlue,
+                                letterSpacing = 0.8.sp
                             )
                         }
 
@@ -441,11 +434,11 @@ fun MemoryPostcardDialog(
                         Icon(
                             imageVector = Icons.Default.Radio,
                             contentDescription = null,
-                            tint = GlassTokens.AccentEnd,
-                            modifier = Modifier.size(48.dp)
+                            tint = GlassTokens.IosBlue,
+                            modifier = Modifier.size(44.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
                             text = activePresetName,
@@ -462,25 +455,20 @@ fun MemoryPostcardDialog(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Waveform simulation bars
+                        // Waveform simulation bars in Apple Cyan/Teal
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val barHeights = listOf(14.dp, 28.dp, 20.dp, 36.dp, 44.dp, 30.dp, 22.dp, 38.dp, 16.dp, 26.dp)
-                            val waveformBrush = Brush.verticalGradient(
-                                listOf(
-                                    GlassTokens.AccentEnd,
-                                    GlassTokens.AccentStart
-                                )
-                            )
-                            barHeights.forEach { h ->
+                            barHeights.forEachIndexed { i, h ->
+                                val color = if (i % 2 == 0) GlassTokens.IosTeal else GlassTokens.IosBlue
                                 Box(
                                     modifier = Modifier
-                                        .width(5.dp)
+                                        .width(4.5.dp)
                                         .height(h)
                                         .clip(GlassTokens.radiusPill)
-                                        .background(waveformBrush)
+                                        .background(color)
                                 )
                             }
                         }
@@ -495,11 +483,10 @@ fun MemoryPostcardDialog(
                             PresetBadge(text = uiState.vintageEraName)
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
 
-                        // PRD §6.14: subtle, non-intrusive "Made with Daydream Audio" watermark
                         Text(
-                            text = "✨ Made with Daydream Audio ✨",
+                            text = "✨ Crafted with Daydream Audio ✨",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             color = GlassTokens.TextMuted
@@ -507,7 +494,7 @@ fun MemoryPostcardDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
                     text = "Ready to share with friends on WhatsApp Status, Instagram Stories, or Reels.",
@@ -525,12 +512,13 @@ private fun PresetBadge(text: String) {
     Box(
         modifier = Modifier
             .clip(GlassTokens.radiusPill)
-            .background(Color.White.copy(alpha = 0.08f))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .background(GlassTokens.IosGroupedSecondary)
+            .border(0.6.dp, GlassTokens.IosSeparator, GlassTokens.radiusPill)
+            .padding(horizontal = 9.dp, vertical = 4.dp)
     ) {
         Text(
             text = text,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             color = GlassTokens.TextSecondary
         )
