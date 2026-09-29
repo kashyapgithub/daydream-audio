@@ -1581,7 +1581,7 @@ fun ParametricEqCurveVisualizer(
                 val norm = i / numSamples.toFloat()
                 val minF = 20.0
                 val maxF = 20000.0
-                val f = (minF * kotlin.math.pow(maxF / minF, norm.toDouble())).toFloat()
+                val f = (minF * Math.pow(maxF / minF, norm.toDouble())).toFloat()
 
                 // Compute sum of bell filter gains at f
                 var totalGainDb = 0f
