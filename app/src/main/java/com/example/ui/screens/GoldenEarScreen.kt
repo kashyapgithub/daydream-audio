@@ -102,7 +102,7 @@ fun GoldenEarScreen(
                     EarActivityRings(
                         score = uiState.earTrainerScore,
                         streak = uiState.earTrainerStreak,
-                        challengesCompleted = uiState.earTrainerScore / 10
+                        challengesCompleted = uiState.earTrainerScore / 100
                     )
 
                     Spacer(modifier = Modifier.width(10.dp))
@@ -166,7 +166,7 @@ fun GoldenEarScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(
                             onClick = {
-                                if (!uiState.isPlaying) viewModel.togglePlayPause()
+                                if (!uiState.isPlaying && !uiState.isExternalPlaybackActive) viewModel.togglePlayPause()
                                 viewModel.startNewEarChallenge()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),

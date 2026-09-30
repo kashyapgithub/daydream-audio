@@ -143,6 +143,7 @@ fun AdvancedModeScreen(
                         bands = uiState.advancedBands,
                         spectrum = uiState.spectrum,
                         isPlaying = uiState.isPlaying,
+                        isExternalActive = uiState.isExternalPlaybackActive,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 

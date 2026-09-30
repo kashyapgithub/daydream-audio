@@ -151,7 +151,7 @@ fun TimeMachineScreen(
 
                         // Vintage Analog Cassette Deck Animation
                         AnalogCassetteDeck(
-                            isPlaying = uiState.isPlaying,
+                            isPlaying = uiState.isPlaying || uiState.isExternalPlaybackActive,
                             audioRms = uiState.audioRms,
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
@@ -290,17 +290,19 @@ fun TimeMachineScreen(
                         lineHeight = 17.sp
                     )
 
-                    if (isActive && preset.id == "70s") {
+                    val isVinylEra = preset.id == "60s_mono" || preset.id.contains("vinyl")
+                    val isCassetteEra = preset.id == "70s_cassette" || preset.id == "80s_cinema" || preset.id.contains("cassette")
+                    if (isActive && isVinylEra) {
                         Spacer(modifier = Modifier.height(10.dp))
                         VinylTurntableDeck(
-                            isPlaying = uiState.isPlaying,
-                            trackTitle = uiState.currentTrack?.title,
+                            isPlaying = uiState.isPlaying || uiState.isExternalPlaybackActive,
+                            trackTitle = uiState.currentTrack?.title ?: uiState.currentLocalTrack?.title,
                             modifier = Modifier.padding(top = 2.dp)
                         )
-                    } else if (isActive && preset.id == "80s") {
+                    } else if (isActive && isCassetteEra) {
                         Spacer(modifier = Modifier.height(10.dp))
                         AnalogCassetteDeck(
-                            isPlaying = uiState.isPlaying,
+                            isPlaying = uiState.isPlaying || uiState.isExternalPlaybackActive,
                             audioRms = uiState.audioRms,
                             modifier = Modifier.padding(top = 2.dp)
                         )
@@ -346,10 +348,12 @@ fun MemoryPostcardDialog(
     val context = LocalContext.current
     val activePresetName = uiState.activePresetId?.let { id ->
         when (id) {
-            "70s_vinyl" -> "1970s Warm Vinyl"
-            "80s_cassette" -> "1980s Type II Cassette"
-            "90s_broadcast" -> "1990s FM Broadcast"
-            "00s_early_mp3" -> "2000s 128kbps MP3"
+            "60s_mono" -> "1960s Mono Transfer (Vinyl & Tube)"
+            "70s_cassette" -> "1970s Magnetic Tape (Cassette)"
+            "80s_cinema" -> "1980s Cinema Optical Print"
+            "90s_radio" -> "1990s FM Broadcast Airplay"
+            "early_mp3" -> "2000s Early Digital (128kbps MP3)"
+            "audiophile_hifi" -> "Audiophile Studio Hi-Fi Master"
             else -> id.replace("_", " ").replaceFirstChar { it.uppercase() }
         }
     } ?: if (uiState.isVintageMode) "Vintage-ify Acoustic Profile" else "Time Machine Master"

@@ -291,3 +291,37 @@ data class SoundTargetPreset(
     }
 }
 
+/**
+ * Locally stored MP3 track stored exclusively inside this app's private files directory.
+ */
+data class LocalTrack(
+    val id: String,
+    val title: String,
+    val artist: String = "Unknown Artist",
+    val album: String = "",
+    val durationMs: Long = 0L,
+    val filePath: String,
+    val fileName: String,
+    val fileSize: Long = 0L,
+    val dateAdded: Long = System.currentTimeMillis()
+) {
+    val formattedDuration: String
+        get() {
+            if (durationMs <= 0) return "--:--"
+            val totalSeconds = durationMs / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            return String.format(java.util.Locale.US, "%d:%02d", minutes, seconds)
+        }
+
+    val formattedSize: String
+        get() {
+            if (fileSize <= 0) return ""
+            val mb = fileSize.toDouble() / (1024 * 1024)
+            return String.format(java.util.Locale.US, "%.1f MB", mb)
+        }
+
+    val formattedFileSize: String
+        get() = formattedSize
+}
+

@@ -4,22 +4,28 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.media.AudioManager
+import android.net.Uri
 import com.example.audio.AudioDeviceManager
 import com.example.audio.AudioEngine
+import com.example.audio.LocalTrackManager
 import com.example.audio.SystemAudioEffectManager
 import com.example.model.AudioComplaint
 import com.example.model.CustomSoundPreset
 import com.example.model.DemoTrack
+import com.example.model.LocalTrack
 import com.example.model.OutputDevice
 import com.example.model.ParametricBand
 import com.example.model.PlainBand
 import com.example.model.PresetExportBundle
 import com.example.model.SoundTargetPreset
 import com.example.model.TimeMachinePreset
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import kotlin.random.Random
@@ -190,7 +196,15 @@ data class DaydreamUiState(
 
     // Smart Device Routing & Hearing Comfort
     val autoSwitchDeviceProfiles: Boolean = true,
-    val comfortLimiterEnabled: Boolean = false
+    val comfortLimiterEnabled: Boolean = false,
+
+    // In-App Local MP3 Library & External Playback State
+    val localTracks: List<LocalTrack> = emptyList(),
+    val currentLocalTrack: LocalTrack? = null,
+    val isExternalPlaybackActive: Boolean = false,
+    val playbackPositionMs: Long = 0L,
+    val playbackDurationMs: Long = 0L,
+    val isImportingTrack: Boolean = false
 )
 
 class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
@@ -199,6 +213,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     private val audioEngine = AudioEngine()
     private val systemEffects = SystemAudioEffectManager.instance
     private val deviceManager = AudioDeviceManager(application)
+    private val localTrackManager = LocalTrackManager(application)
 
     // Pre-lofi saved state for smooth restoration when Lofi Mode is toggled off
     private var preLofiSpeed = 1.0f
@@ -319,6 +334,63 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             }
         }
 
+        // Initialize local MP3 storage library
+        val initialLocalTracks = localTrackManager.getAllTracks()
+        _uiState.update { it.copy(localTracks = initialLocalTracks) }
+
+        audioEngine.onPlaybackFinished = {
+            nextTrack()
+        }
+
+        // Coroutine for local track position and duration updates
+        viewModelScope.launch {
+            while (isActive) {
+                if (_uiState.value.isPlaying && _uiState.value.currentLocalTrack != null) {
+                    val pos = audioEngine.getCurrentPositionMs()
+                    val dur = audioEngine.getDurationMs()
+                    _uiState.update { it.copy(playbackPositionMs = pos, playbackDurationMs = dur) }
+                }
+                delay(250)
+            }
+        }
+
+        // Coroutine for external audio monitoring and responsive visualizer animation
+        val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        viewModelScope.launch {
+            var tick = 0
+            while (isActive) {
+                val internalPlaying = audioEngine.isCurrentlyPlaying()
+                val extActive = !internalPlaying && (audioManager?.isMusicActive == true || _uiState.value.activeSystemSessions.isNotEmpty())
+                if (extActive != _uiState.value.isExternalPlaybackActive) {
+                    _uiState.update { it.copy(isExternalPlaybackActive = extActive) }
+                }
+                if (extActive) {
+                    tick++
+                    val bassPulse = (0.42f + 0.38f * kotlin.math.sin(tick * 0.45).toFloat().coerceAtLeast(0f)).coerceIn(0.1f, 1f)
+                    val midPulse = (0.32f + 0.28f * kotlin.math.cos(tick * 0.35).toFloat().coerceAtLeast(0f)).coerceIn(0.1f, 1f)
+                    val treblePulse = (0.25f + 0.25f * kotlin.math.sin(tick * 0.6).toFloat().coerceAtLeast(0f)).coerceIn(0.1f, 1f)
+                    val rms = (0.35f + bassPulse * 0.3f).coerceIn(0.2f, 0.85f)
+                    val extSpectrum = floatArrayOf(
+                        (bassPulse * 0.95f).coerceIn(0.1f, 1f),
+                        (bassPulse * 0.85f).coerceIn(0.1f, 1f),
+                        (midPulse * 0.80f).coerceIn(0.1f, 1f),
+                        (midPulse * 0.90f).coerceIn(0.1f, 1f),
+                        (midPulse * 0.75f).coerceIn(0.1f, 1f),
+                        (treblePulse * 0.85f).coerceIn(0.1f, 1f),
+                        (treblePulse * 0.70f).coerceIn(0.1f, 1f),
+                        (treblePulse * 0.60f).coerceIn(0.1f, 1f)
+                    )
+                    _uiState.update {
+                        it.copy(
+                            spectrum = extSpectrum,
+                            audioRms = rms
+                        )
+                    }
+                }
+                delay(120)
+            }
+        }
+
         syncAllEngineParameters()
     }
 
@@ -345,8 +417,91 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
 
     fun selectTrack(index: Int) {
         if (index in audioEngine.demoTracks.indices) {
-            audioEngine.currentTrackIndex = index
-            _uiState.update { it.copy(currentTrack = audioEngine.demoTracks[index]) }
+            audioEngine.playDemoTrack(index, viewModelScope)
+            _uiState.update {
+                it.copy(
+                    currentTrack = audioEngine.demoTracks[index],
+                    currentLocalTrack = null,
+                    isPlaying = true
+                )
+            }
+        }
+    }
+
+    fun playLocalTrack(track: LocalTrack) {
+        audioEngine.playLocalTrack(track, viewModelScope)
+        _uiState.update {
+            it.copy(
+                currentLocalTrack = track,
+                currentTrack = null,
+                isPlaying = true,
+                playbackPositionMs = 0L,
+                playbackDurationMs = track.durationMs
+            )
+        }
+    }
+
+    fun importLocalMp3(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImportingTrack = true) }
+            val track = localTrackManager.importTrackFromUri(uri)
+            val all = localTrackManager.getAllTracks()
+            _uiState.update {
+                it.copy(
+                    localTracks = all,
+                    isImportingTrack = false,
+                    notificationMessage = if (track != null) "Imported: ${track.title}" else "Failed to import MP3 file"
+                )
+            }
+            if (track != null) {
+                playLocalTrack(track)
+            }
+        }
+    }
+
+    fun deleteLocalTrack(trackId: String) {
+        if (_uiState.value.currentLocalTrack?.id == trackId) {
+            audioEngine.stopPlayback()
+            _uiState.update { it.copy(isPlaying = false, currentLocalTrack = null) }
+        }
+        localTrackManager.deleteTrack(trackId)
+        val all = localTrackManager.getAllTracks()
+        _uiState.update {
+            it.copy(
+                localTracks = all,
+                notificationMessage = "Track removed from in-app library"
+            )
+        }
+    }
+
+    fun seekTo(positionMs: Long) {
+        audioEngine.seekTo(positionMs)
+        _uiState.update { it.copy(playbackPositionMs = positionMs) }
+    }
+
+    fun nextTrack() {
+        val state = _uiState.value
+        if (state.currentLocalTrack != null && state.localTracks.isNotEmpty()) {
+            val currentIdx = state.localTracks.indexOfFirst { it.id == state.currentLocalTrack.id }
+            val nextIdx = if (currentIdx >= 0) (currentIdx + 1) % state.localTracks.size else 0
+            playLocalTrack(state.localTracks[nextIdx])
+        } else {
+            val currentIdx = audioEngine.currentTrackIndex
+            val nextIdx = (currentIdx + 1) % audioEngine.demoTracks.size
+            selectTrack(nextIdx)
+        }
+    }
+
+    fun previousTrack() {
+        val state = _uiState.value
+        if (state.currentLocalTrack != null && state.localTracks.isNotEmpty()) {
+            val currentIdx = state.localTracks.indexOfFirst { it.id == state.currentLocalTrack.id }
+            val prevIdx = if (currentIdx > 0) currentIdx - 1 else state.localTracks.size - 1
+            playLocalTrack(state.localTracks[prevIdx])
+        } else {
+            val currentIdx = audioEngine.currentTrackIndex
+            val prevIdx = if (currentIdx > 0) currentIdx - 1 else audioEngine.demoTracks.size - 1
+            selectTrack(prevIdx)
         }
     }
 
@@ -694,6 +849,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             updatedEq[PlainBand.AIR] = lofiAir
             audioEngine.updateDspCoefficients()
             systemEffects.updatePlainEqGains(updatedEq)
+            systemEffects.updateVintageMode(true)
             systemEffects.updateReverb(
                 wetPercent = lofiReverbWet,
                 roomSizePercent = lofiReverbRoom,
@@ -739,6 +895,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             restoredEq[PlainBand.AIR] = preLofiAir
             audioEngine.updateDspCoefficients()
             systemEffects.updatePlainEqGains(restoredEq)
+            systemEffects.updateVintageMode(preLofiVintageMode)
             systemEffects.updateReverb(
                 wetPercent = preLofiReverbWet,
                 roomSizePercent = preLofiReverbRoom,
@@ -851,6 +1008,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.hissRemoval = hiss
         audioEngine.deHumEnabled = deHum
         audioEngine.deCrackleEnabled = deCrackle
+        systemEffects.updateNoiseReduction(hiss, deHum, _uiState.value.humFrequency)
         audioEngine.updateDspCoefficients()
 
         _uiState.update {
@@ -892,8 +1050,10 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.hissRemoval = preset.hissRemoval
         audioEngine.deHumEnabled = preset.deHumEnabled
         audioEngine.deCrackleEnabled = preset.deCrackleEnabled
+        systemEffects.updateNoiseReduction(preset.hissRemoval, preset.deHumEnabled, _uiState.value.humFrequency)
         audioEngine.vintageMode = false
         audioEngine.wowFlutterDepth = 0f
+        systemEffects.updateVintageMode(false)
         audioEngine.updateDspCoefficients()
 
         _uiState.update {
@@ -987,6 +1147,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         systemEffects.updatePunch(target.punchPercent)
 
         audioEngine.clarityMacroAmount = target.clarityPercent
+        systemEffects.updateClarity(target.clarityPercent)
         audioEngine.updateDspCoefficients()
 
         _uiState.update {
@@ -1043,6 +1204,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         systemEffects.updatePunch(preset.punchPercent)
 
         audioEngine.clarityMacroAmount = preset.clarityPercent
+        systemEffects.updateClarity(preset.clarityPercent)
         audioEngine.updateDspCoefficients()
 
         _uiState.update {
@@ -1068,6 +1230,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         val targetCeiling = if (newVal) -2.0f else -0.5f
         audioEngine.limiterCeilingDb = targetCeiling
         audioEngine.updateDspCoefficients()
+        systemEffects.updateComfortLimiter(newVal)
         _uiState.update {
             it.copy(
                 comfortLimiterEnabled = newVal,
@@ -1447,6 +1610,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.compAttackMs = s.compAttackMs
         audioEngine.compReleaseMs = s.compReleaseMs
         audioEngine.limiterCeilingDb = s.limiterCeilingDb
+        systemEffects.updateComfortLimiter(s.comfortLimiterEnabled)
         systemEffects.updateDynamicsCompressor(
             thresholdDb = s.compThresholdDb,
             ratio = s.compRatio,

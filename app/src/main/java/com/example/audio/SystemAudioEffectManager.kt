@@ -85,6 +85,7 @@ class SystemAudioEffectManager private constructor() {
     private var currentDeHumEnabled = false
     private var currentHumFrequency = 60
     private var currentVintageMode = false
+    private var currentComfortLimiter = false
     var isParametricModeActive: Boolean = false
     private var isBypassed = false
     private var isMonoInput = false
@@ -376,6 +377,14 @@ class SystemAudioEffectManager private constructor() {
         sessions.values.forEach { applyEqToHolder(it) }
     }
 
+    fun updateComfortLimiter(enabled: Boolean) {
+        this.currentComfortLimiter = enabled
+        sessions.values.forEach {
+            applyLoudnessToHolder(it)
+            applyDynamicsToHolder(it)
+        }
+    }
+
     private fun applyStateToSession(holder: SessionHolder) {
         applyEqToHolder(holder)
         applyBassBoostToHolder(holder)
@@ -500,6 +509,10 @@ class SystemAudioEffectManager private constructor() {
                         limiter.threshold = -12f - pNorm * 12f
                         limiter.postGain = pNorm * 4f
                     }
+                    if (currentComfortLimiter) {
+                        limiter.threshold = limiter.threshold.coerceAtMost(-2.5f)
+                        limiter.postGain = limiter.postGain.coerceAtMost(1.5f)
+                    }
                     dynamics.setLimiterByChannelIndex(0, limiter)
                     dynamics.setLimiterByChannelIndex(1, limiter)
                 }
@@ -513,7 +526,9 @@ class SystemAudioEffectManager private constructor() {
         val loud = holder.loudnessEnhancer ?: return
         try {
             // Target gain in millibels (0 to 1500 mB = 0 to 15dB)
-            val gainMb = ((currentLoudnessPercent / 100f) * 1200f).toInt().coerceIn(0, 1500)
+            // Comfort limiter limits max boost to 600mB (6dB)
+            val maxAllowedMb = if (currentComfortLimiter) 600 else 1500
+            val gainMb = ((currentLoudnessPercent / 100f) * 1200f).toInt().coerceIn(0, maxAllowedMb)
             loud.setTargetGain(gainMb)
         } catch (e: Exception) {
             Log.w(TAG, "Error applying loudness enhancer: ${e.message}")

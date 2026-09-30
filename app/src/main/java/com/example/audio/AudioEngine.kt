@@ -6,12 +6,14 @@ import android.media.AudioTrack
 import android.media.PlaybackParams
 import android.util.Log
 import com.example.model.DemoTrack
+import com.example.model.LocalTrack
 import com.example.model.PlainBand
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.PI
 import kotlin.math.abs
@@ -47,6 +49,15 @@ class AudioEngine {
     private var playbackJob: Job? = null
     private val isPlaying = AtomicBoolean(false)
     val isBypassed = AtomicBoolean(false) // A/B toggle (<50ms bypass)
+
+    // Local MP3 Playback State
+    var currentLocalTrack: LocalTrack? = null
+        private set
+    var isLocalTrackMode: Boolean = false
+        private set
+    private var localDecoder: Mp3AudioDecoder? = null
+    private val localStereoBuffer = FloatArray(BUFFER_SIZE * 2)
+    var onPlaybackFinished: (() -> Unit)? = null
 
     // 5-Band Simple Mode Gains
     var eqGains = mutableMapOf<PlainBand, Float>(
@@ -427,32 +438,34 @@ class AudioEngine {
         if (isPlaying.get()) return
         isPlaying.set(true)
 
-        val minBuf = AudioTrack.getMinBufferSize(
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_OUT_STEREO,
-            AudioFormat.ENCODING_PCM_16BIT
-        )
-
-        audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
+        if (audioTrack == null) {
+            val minBuf = AudioTrack.getMinBufferSize(
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_OUT_STEREO,
+                AudioFormat.ENCODING_PCM_16BIT
             )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                    .build()
-            )
-            .setBufferSizeInBytes(max(minBuf, BUFFER_SIZE * 4))
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
 
-        audioTrack?.play()
+            audioTrack = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                        .build()
+                )
+                .setBufferSizeInBytes(max(minBuf, BUFFER_SIZE * 4))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+        }
+
         try {
+            audioTrack?.play()
             val params = audioTrack?.playbackParams ?: PlaybackParams()
             params.setSpeed(playbackSpeed)
             params.setPitch(if (varispeedMode) playbackSpeed else 1.0f)
@@ -475,10 +488,30 @@ class AudioEngine {
                 if (!spectrumFiltersConfigured) configureSpectrumFilters()
                 val spectrumEnergyAccum = DoubleArray(8)
 
+                val isLocal = isLocalTrackMode && localDecoder != null
+                val localDec = localDecoder
+                val framesRead = if (isLocal && localDec != null) {
+                    val read = localDec.readStereoSamples(localStereoBuffer, 0, BUFFER_SIZE * 2)
+                    if (read <= 0) {
+                        localDec.seekTo(0)
+                        onPlaybackFinished?.invoke()
+                    }
+                    read
+                } else 0
+
                 val track = demoTracks[currentTrackIndex]
 
                 for (i in 0 until BUFFER_SIZE) {
-                    val (rawL, rawR) = synthesizeSourceSample(track)
+                    val (rawL, rawR) = if (isLocal) {
+                        if (i < framesRead) {
+                            Pair(localStereoBuffer[i * 2].toDouble(), localStereoBuffer[i * 2 + 1].toDouble())
+                        } else {
+                            Pair(0.0, 0.0)
+                        }
+                    } else {
+                        synthesizeSourceSample(track)
+                    }
+
                     val (outL, outR) = processStereoSample(rawL, rawR)
 
                     // Metrics
@@ -520,6 +553,39 @@ class AudioEngine {
         }
     }
 
+    fun playLocalTrack(track: LocalTrack, scope: CoroutineScope) {
+        stopPlayback()
+        currentLocalTrack = track
+        isLocalTrackMode = true
+        try {
+            localDecoder?.release()
+            localDecoder = Mp3AudioDecoder(File(track.filePath))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Mp3AudioDecoder for ${track.filePath}", e)
+            isLocalTrackMode = false
+            currentLocalTrack = null
+            return
+        }
+        startPlayback(scope)
+    }
+
+    fun playDemoTrack(index: Int, scope: CoroutineScope) {
+        stopPlayback()
+        isLocalTrackMode = false
+        currentLocalTrack = null
+        currentTrackIndex = index.coerceIn(demoTracks.indices)
+        startPlayback(scope)
+    }
+
+    fun pausePlayback() {
+        isPlaying.set(false)
+        playbackJob?.cancel()
+        playbackJob = null
+        try {
+            audioTrack?.pause()
+        } catch (e: Exception) {}
+    }
+
     fun stopPlayback() {
         isPlaying.set(false)
         playbackJob?.cancel()
@@ -531,7 +597,27 @@ class AudioEngine {
             audioTrack?.release()
         } catch (e: Exception) {}
         audioTrack = null
+        localDecoder?.release()
+        localDecoder = null
         resetAllEffects()
+    }
+
+    fun seekTo(positionMs: Long) {
+        if (isLocalTrackMode) {
+            localDecoder?.seekTo(positionMs)
+        }
+    }
+
+    fun getCurrentPositionMs(): Long {
+        return if (isLocalTrackMode) {
+            localDecoder?.getCurrentPositionMs() ?: 0L
+        } else 0L
+    }
+
+    fun getDurationMs(): Long {
+        return if (isLocalTrackMode) {
+            currentLocalTrack?.durationMs?.takeIf { it > 0 } ?: (localDecoder?.getDurationMs() ?: 0L)
+        } else 0L
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -591,7 +677,7 @@ class AudioEngine {
 
     fun togglePlayPause(scope: CoroutineScope): Boolean {
         if (isPlaying.get()) {
-            stopPlayback()
+            pausePlayback()
             return false
         } else {
             startPlayback(scope)

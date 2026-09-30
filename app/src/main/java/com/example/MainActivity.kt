@@ -2,8 +2,10 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -117,6 +119,12 @@ class MainActivity : ComponentActivity() {
                 ) {
                     var isNowPlayingSheetOpen by remember { mutableStateOf(false) }
 
+                    val audioPickerLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.GetContent()
+                    ) { uri ->
+                        uri?.let { viewModel.importLocalMp3(it) }
+                    }
+
                     if (!uiState.isOnboardingCompleted) {
                         OnboardingScreen(
                             viewModel = viewModel,
@@ -137,14 +145,12 @@ class MainActivity : ComponentActivity() {
                                 // Now Playing floating glass bar
                                 NowPlayingGlassBar(
                                     track = uiState.currentTrack,
+                                    localTrack = uiState.currentLocalTrack,
                                     isPlaying = uiState.isPlaying,
+                                    isExternalActive = uiState.isExternalPlaybackActive,
+                                    externalAppName = uiState.activeSystemSessions.firstOrNull(),
                                     onTogglePlay = { viewModel.togglePlayPause() },
-                                    onNextTrack = {
-                                        val nextIdx = ((uiState.currentTrack?.let {
-                                            viewModel.timeMachinePresets.indices.firstOrNull() ?: 0
-                                        } ?: 0) + 1) % 4
-                                        viewModel.selectTrack(nextIdx)
-                                    },
+                                    onNextTrack = { viewModel.nextTrack() },
                                     spectrum = uiState.spectrum,
                                     reduceGlass = uiState.reduceGlass,
                                     onExpandSheet = { isNowPlayingSheetOpen = true },
@@ -167,7 +173,8 @@ class MainActivity : ComponentActivity() {
                                 AppNavTab.RESTORE -> SimpleModeScreen(
                                     viewModel = viewModel,
                                     uiState = uiState,
-                                    paddingValues = innerPadding
+                                    paddingValues = innerPadding,
+                                    onImportMp3Click = { audioPickerLauncher.launch("audio/*") }
                                 )
                                 AppNavTab.ADVANCED -> AdvancedModeScreen(
                                     viewModel = viewModel,
@@ -193,7 +200,7 @@ class MainActivity : ComponentActivity() {
 
                             // Dynamic Island 2.0 (Apple Cupertino HIG)
                             AnimatedVisibility(
-                                visible = uiState.notificationMessage != null || uiState.isPlaying,
+                                visible = uiState.notificationMessage != null || uiState.isPlaying || uiState.isExternalPlaybackActive,
                                 enter = slideInVertically(
                                     initialOffsetY = { -it },
                                     animationSpec = spring(dampingRatio = 0.78f, stiffness = 400f)
@@ -248,30 +255,47 @@ class MainActivity : ComponentActivity() {
                                                 color = GlassTokens.TextPrimary
                                             )
                                         }
-                                    } else if (uiState.isPlaying) {
+                                    } else if (uiState.isPlaying || uiState.isExternalPlaybackActive) {
                                         // Cupertino Dynamic Island Live Audio Pill
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            modifier = Modifier.clickable { viewModel.togglePlayPause() }
+                                            modifier = Modifier.clickable {
+                                                if (uiState.isPlaying) {
+                                                    viewModel.togglePlayPause()
+                                                } else {
+                                                    isNowPlayingSheetOpen = true
+                                                }
+                                            }
                                         ) {
                                             Box(
                                                 modifier = Modifier
                                                     .size(16.dp)
                                                     .clip(CircleShape)
-                                                    .background(GlassTokens.IosBlue.copy(alpha = 0.25f)),
+                                                    .background(
+                                                        if (uiState.isExternalPlaybackActive && !uiState.isPlaying)
+                                                            GlassTokens.IosGreen.copy(alpha = 0.25f)
+                                                        else GlassTokens.IosBlue.copy(alpha = 0.25f)
+                                                    ),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.GraphicEq,
                                                     contentDescription = null,
-                                                    tint = GlassTokens.IosBlue,
+                                                    tint = if (uiState.isExternalPlaybackActive && !uiState.isPlaying) GlassTokens.IosGreen else GlassTokens.IosBlue,
                                                     modifier = Modifier.size(11.dp)
                                                 )
                                             }
 
+                                            val islandText = when {
+                                                uiState.currentLocalTrack != null && uiState.isPlaying -> uiState.currentLocalTrack!!.title
+                                                uiState.currentTrack != null && uiState.isPlaying -> uiState.currentTrack!!.title
+                                                uiState.isExternalPlaybackActive -> (uiState.activeSystemSessions.firstOrNull()?.let { "Hooked: $it" } ?: "Live External Audio")
+                                                else -> "Daydream Audio"
+                                            }
+
                                             Text(
-                                                text = uiState.currentTrack?.title ?: "Daydream Audio",
+                                                text = islandText,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = GlassTokens.TextPrimary,
@@ -322,22 +346,17 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 NowPlayingModalSheet(
                                     track = uiState.currentTrack,
+                                    localTrack = uiState.currentLocalTrack,
                                     isPlaying = uiState.isPlaying,
+                                    isExternalActive = uiState.isExternalPlaybackActive,
+                                    externalAppName = uiState.activeSystemSessions.firstOrNull(),
+                                    currentPositionMs = uiState.playbackPositionMs,
+                                    durationMs = uiState.playbackDurationMs,
+                                    onSeekTo = { viewModel.seekTo(it) },
                                     isBypassed = uiState.isBypassed,
                                     onTogglePlay = { viewModel.togglePlayPause() },
-                                    onNextTrack = {
-                                        val nextIdx = ((uiState.currentTrack?.let {
-                                            viewModel.timeMachinePresets.indices.firstOrNull() ?: 0
-                                        } ?: 0) + 1) % 4
-                                        viewModel.selectTrack(nextIdx)
-                                    },
-                                    onPreviousTrack = {
-                                        val current = uiState.currentTrack?.let {
-                                            viewModel.timeMachinePresets.indices.firstOrNull() ?: 0
-                                        } ?: 0
-                                        val prevIdx = if (current > 0) current - 1 else 3
-                                        viewModel.selectTrack(prevIdx)
-                                    },
+                                    onNextTrack = { viewModel.nextTrack() },
+                                    onPreviousTrack = { viewModel.previousTrack() },
                                     onToggleBypass = { viewModel.toggleBypassAB() },
                                     onDismiss = { isNowPlayingSheetOpen = false },
                                     audioRms = uiState.audioRms,

@@ -20,10 +20,15 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -40,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.OutputDevice
@@ -65,7 +71,8 @@ import com.example.viewmodel.DaydreamViewModel
 fun SimpleModeScreen(
     viewModel: DaydreamViewModel,
     uiState: DaydreamUiState,
-    paddingValues: PaddingValues
+    paddingValues: PaddingValues,
+    onImportMp3Click: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -130,6 +137,7 @@ fun SimpleModeScreen(
             HomeSpectrumVisualizer(
                 spectrum = uiState.spectrum,
                 isPlaying = uiState.isPlaying,
+                isExternalActive = uiState.isExternalPlaybackActive,
                 reduceGlass = uiState.reduceGlass
             )
         }
@@ -211,6 +219,246 @@ fun SimpleModeScreen(
                                         .size(13.dp)
                                         .clickable { viewModel.deleteCustomPreset(preset.id) }
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apple Section: Private In-App Audio Vault (Isolated Local MP3 Storage & Playback)
+        item {
+            IosSectionHeader(
+                title = "In-App Audio Vault",
+                subtitle = "Private local storage • Processed through 32-bit DSP engine"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .iosInsetGroupedCard(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                            Text(
+                                text = "Local MP3 Library",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "Stored isolated in this app only (zero leakage)",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary,
+                                modifier = Modifier.padding(top = 1.dp)
+                            )
+                        }
+
+                        // Apple Inset Pill Button for Import
+                        Button(
+                            onClick = onImportMp3Click,
+                            enabled = !uiState.isImportingTrack,
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
+                            shape = GlassTokens.radiusPill,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("import_mp3_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (uiState.isImportingTrack) "Importing…" else "Import MP3",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    if (uiState.localTracks.isEmpty()) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(GlassTokens.radiusMd)
+                                .background(GlassTokens.IosGroupedSecondary)
+                                .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusMd)
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = null,
+                                    tint = GlassTokens.IosBlue.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No In-App Audio Stored Yet",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = GlassTokens.TextPrimary
+                                )
+                                Text(
+                                    text = "Tap 'Import MP3' to securely copy audio into this app's private sandbox. Songs will run through the full 7-stage DSP audio engine.",
+                                    fontSize = 12.sp,
+                                    color = GlassTokens.TextSecondary,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    lineHeight = 16.sp,
+                                    modifier = Modifier.padding(top = 4.dp, start = 8.dp, end = 8.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            uiState.localTracks.forEach { track ->
+                                val isCurrentlySelected = uiState.currentLocalTrack?.id == track.id
+                                val isCurrentPlaying = isCurrentlySelected && uiState.isPlaying
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(GlassTokens.radiusMd)
+                                        .background(
+                                            if (isCurrentlySelected) GlassTokens.IosBlue.copy(alpha = 0.12f)
+                                            else GlassTokens.IosGroupedSecondary
+                                        )
+                                        .border(
+                                            0.8.dp,
+                                            if (isCurrentlySelected) GlassTokens.IosBlue.copy(alpha = 0.45f)
+                                            else GlassTokens.IosSeparator,
+                                            GlassTokens.radiusMd
+                                        )
+                                        .clickable {
+                                            if (isCurrentlySelected) {
+                                                viewModel.togglePlayPause()
+                                            } else {
+                                                viewModel.playLocalTrack(track)
+                                            }
+                                        }
+                                        .padding(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Play/Pause Action Icon
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                                .background(
+                                                    if (isCurrentPlaying) GlassTokens.IosGreen
+                                                    else GlassTokens.IosBlue
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isCurrentPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                contentDescription = if (isCurrentPlaying) "Pause" else "Play",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        // Track Info
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = track.title,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = if (isCurrentlySelected) FontWeight.Bold else FontWeight.SemiBold,
+                                                    color = if (isCurrentlySelected) GlassTokens.IosBlue else GlassTokens.TextPrimary,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                )
+                                                if (isCurrentPlaying) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(GlassTokens.radiusPill)
+                                                            .background(GlassTokens.IosGreen.copy(alpha = 0.2f))
+                                                            .padding(horizontal = 6.dp, vertical = 1.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "32-bit DSP",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = GlassTokens.IosGreen
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(2.dp))
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = track.artist,
+                                                    fontSize = 12.sp,
+                                                    color = GlassTokens.TextSecondary,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "•",
+                                                    fontSize = 10.sp,
+                                                    color = GlassTokens.TextMuted
+                                                )
+                                                Text(
+                                                    text = track.formattedDuration,
+                                                    fontSize = 11.sp,
+                                                    color = GlassTokens.TextSecondary
+                                                )
+                                                Text(
+                                                    text = "•",
+                                                    fontSize = 10.sp,
+                                                    color = GlassTokens.TextMuted
+                                                )
+                                                Text(
+                                                    text = track.formattedFileSize,
+                                                    fontSize = 11.sp,
+                                                    color = GlassTokens.TextSecondary
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // Delete button
+                                        IconButton(
+                                            onClick = { viewModel.deleteLocalTrack(track.id) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete local track",
+                                                tint = GlassTokens.TextMuted,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
