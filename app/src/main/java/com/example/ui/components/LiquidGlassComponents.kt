@@ -92,12 +92,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
 import com.example.model.CustomSoundPreset
 import com.example.model.DemoTrack
 import com.example.model.LocalTrack
 import com.example.model.ParametricBand
 import com.example.model.PlainBand
 import com.example.model.SoundTargetPreset
+import com.example.model.LufsMetrics
+import com.example.model.StreamingTarget
+import com.example.model.TestToneMode
+import com.example.model.SubCutFilter
+import com.example.model.HarmonicSaturationType
+import com.example.model.ReferenceMonitor
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.floatingGlass
 import com.example.ui.theme.iosPressable
@@ -154,16 +165,16 @@ fun SonicGlassBackground(
                     .blur(48.dp)
             )
 
-            // Apple Dark Mode Obsidian scrim
+            // Apple Dark Mode Obsidian scrim with luminous liquid fluid transmission
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xFF000000).copy(alpha = 0.82f),
-                                Color(0xFF050508).copy(alpha = 0.90f),
-                                Color(0xFF000000).copy(alpha = 0.96f)
+                                Color(0xFF030408).copy(alpha = 0.65f),
+                                Color(0xFF080912).copy(alpha = 0.72f),
+                                Color(0xFF020205).copy(alpha = 0.85f)
                             )
                         )
                     )
@@ -172,13 +183,13 @@ fun SonicGlassBackground(
             // Subtle Apple Chromatic Light Diffusion (Deep Indigo + Teal + Amber)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 // Pole A: Apple System Indigo / Violet radiance (Top Left)
-                val poleARadius = (size.width * 0.52f) + (animatedRms * 190f) + (bassEnergy * 80f) + (idleShift * 20f)
-                val poleAAlpha = (0.11f + animatedRms * 0.18f).coerceIn(0.06f, 0.28f)
+                val poleARadius = (size.width * 0.54f) + (animatedRms * 210f) + (bassEnergy * 85f) + (idleShift * 20f)
+                val poleAAlpha = (0.18f + animatedRms * 0.25f).coerceIn(0.12f, 0.45f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
                             GlassTokens.IosIndigo.copy(alpha = poleAAlpha),
-                            GlassTokens.IosBlue.copy(alpha = poleAAlpha * 0.4f),
+                            GlassTokens.IosBlue.copy(alpha = poleAAlpha * 0.5f),
                             Color.Transparent
                         ),
                         center = Offset(size.width * 0.22f + (idleShift * 25f), size.height * 0.15f + (idleShift * 18f)),
@@ -189,13 +200,13 @@ fun SonicGlassBackground(
                 )
 
                 // Pole B: Apple System Teal / Cyan glow (Center Right)
-                val poleBRadius = (size.width * 0.56f) + (animatedRms * 210f) + (trebleEnergy * 90f) - (idleShift * 18f)
-                val poleBAlpha = (0.09f + animatedRms * 0.16f).coerceIn(0.05f, 0.24f)
+                val poleBRadius = (size.width * 0.58f) + (animatedRms * 230f) + (trebleEnergy * 95f) - (idleShift * 18f)
+                val poleBAlpha = (0.15f + animatedRms * 0.22f).coerceIn(0.10f, 0.40f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
                             GlassTokens.IosTeal.copy(alpha = poleBAlpha),
-                            GlassTokens.IosBlue.copy(alpha = poleBAlpha * 0.3f),
+                            GlassTokens.IosBlue.copy(alpha = poleBAlpha * 0.4f),
                             Color.Transparent
                         ),
                         center = Offset(size.width * 0.80f - (idleShift * 20f), size.height * 0.65f - (idleShift * 25f)),
@@ -206,8 +217,8 @@ fun SonicGlassBackground(
                 )
 
                 // Pole C: Subtle warm amber core (Sub-bass anchor)
-                val poleCRadius = (size.width * 0.38f) + (bassEnergy * 110f) + (idleShift * 15f)
-                val poleCAlpha = (0.05f + bassEnergy * 0.08f).coerceIn(0.02f, 0.14f)
+                val poleCRadius = (size.width * 0.40f) + (bassEnergy * 120f) + (idleShift * 15f)
+                val poleCAlpha = (0.09f + bassEnergy * 0.12f).coerceIn(0.05f, 0.25f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
@@ -223,11 +234,11 @@ fun SonicGlassBackground(
             }
         }
 
-        // Overlay scrim for high-contrast legibility (PRD 22.3)
+        // Soft overlay scrim for high-contrast legibility (PRD 22.3)
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF000000).copy(alpha = if (reduceGlass) 0.98f else 0.25f))
+                .background(Color(0xFF000000).copy(alpha = if (reduceGlass) 0.98f else 0.16f))
         )
 
         content()
@@ -258,8 +269,9 @@ fun LiquidSlider(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp)
+            .padding(vertical = 4.dp)
     ) {
+        // Parameter Title & Formatted Value Readout Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -268,73 +280,83 @@ fun LiquidSlider(
             @OptIn(ExperimentalFoundationApi::class)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = if (onInfoClick != null) {
-                    Modifier.combinedClickable(
-                        onClick = { onInfoClick() },
-                        onLongClick = { onInfoClick() }
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .padding(end = 8.dp)
+                    .then(
+                        if (onInfoClick != null) {
+                            Modifier.combinedClickable(
+                                onClick = { onInfoClick() },
+                                onLongClick = { onInfoClick() }
+                            )
+                        } else Modifier
                     )
-                } else Modifier
             ) {
                 Text(
                     text = title,
-                    fontSize = 15.sp,
+                    fontSize = 14.5.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = GlassTokens.TextPrimary
+                    color = GlassTokens.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (onInfoClick != null) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
-                            .size(17.dp)
+                            .size(16.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.10f)),
+                            .background(Color.White.copy(alpha = 0.12f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,
                             contentDescription = "Info on $title",
                             tint = GlassTokens.TextSecondary,
-                            modifier = Modifier.size(12.dp)
+                            modifier = Modifier.size(11.dp)
                         )
                     }
                 }
             }
 
-            // Value readout (SF Pro Tabular Figures)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (showTechnical && technicalValue != null) {
-                    Text(
-                        text = technicalValue,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = GlassTokens.TextSecondary,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
-                val formattedDisplayValue = when {
-                    unit == "x" -> String.format(java.util.Locale.US, "%.2fx", value)
-                    unit == ":1" -> String.format(java.util.Locale.US, "%.1f:1", value)
-                    unit == "Q" -> String.format(java.util.Locale.US, "%.1f", value)
-                    unit == "dB" -> {
-                        if (value % 1f == 0f) {
-                            if (value > 0) "+${value.toInt()}dB" else "${value.toInt()}dB"
-                        } else {
-                            if (value > 0) String.format(java.util.Locale.US, "+%.1fdB", value)
-                            else String.format(java.util.Locale.US, "%.1fdB", value)
-                        }
+            // Value readout (SF Pro Tabular Figures) - strictly pinned right
+            val formattedDisplayValue = when {
+                unit == "x" -> String.format(java.util.Locale.US, "%.2fx", value)
+                unit == ":1" -> String.format(java.util.Locale.US, "%.1f:1", value)
+                unit == "Q" -> String.format(java.util.Locale.US, "%.1f", value)
+                unit == "dB" -> {
+                    if (value % 1f == 0f) {
+                        if (value > 0) "+${value.toInt()}dB" else "${value.toInt()}dB"
+                    } else {
+                        if (value > 0) String.format(java.util.Locale.US, "+%.1fdB", value)
+                        else String.format(java.util.Locale.US, "%.1fdB", value)
                     }
-                    value % 1f != 0f && (valueRange.endInclusive - valueRange.start <= 20f) -> {
-                        String.format(java.util.Locale.US, "%.1f%s", value, unit)
-                    }
-                    else -> "${value.toInt()}$unit"
                 }
-                Text(
-                    text = formattedDisplayValue,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isWarning) GlassTokens.IosRed else accentColor
-                )
+                value % 1f != 0f && (valueRange.endInclusive - valueRange.start <= 20f) -> {
+                    String.format(java.util.Locale.US, "%.1f%s", value, unit)
+                }
+                else -> "${value.toInt()}$unit"
             }
+            Text(
+                text = formattedDisplayValue,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isWarning) GlassTokens.IosRed else accentColor,
+                maxLines = 1
+            )
+        }
+
+        // Technical Subtitle line - prevents any row escaping or horizontal clashing
+        if (showTechnical && technicalValue != null) {
+            Text(
+                text = technicalValue,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
+                color = GlassTokens.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 1.dp, bottom = 2.dp)
+            )
         }
 
         if (isWarning && warningText != null) {
@@ -343,6 +365,8 @@ fun LiquidSlider(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Normal,
                 color = GlassTokens.IosRed,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 1.dp)
             )
         }
@@ -390,45 +414,81 @@ fun LiquidSlider(
                         val center = Offset(size.width / 2f, size.height / 2f)
                         val thumbRadius = size.width * 0.44f
 
-                        // Active dragging glow halo (Apple Control Center tactile expansion)
-                        if (isDragged) {
-                            val haloColor = if (isWarning) GlassTokens.IosRed else accentColor
-                            drawCircle(
-                                color = haloColor.copy(alpha = 0.28f),
-                                radius = thumbRadius + 5.dp.toPx(),
-                                center = center
-                            )
-                        }
-
-                        // Physical iOS drop shadow (0 2px 6px rgba(0,0,0,0.38))
+                        // Liquid radial caustic halo (expands fluidly on drag)
+                        val haloAlpha = if (isDragged) 0.35f else 0.12f
+                        val haloRadius = if (isDragged) thumbRadius + 7.dp.toPx() else thumbRadius + 2.dp.toPx()
+                        val haloColor = if (isWarning) GlassTokens.IosRed else accentColor
                         drawCircle(
-                            color = Color.Black.copy(alpha = 0.38f),
-                            radius = thumbRadius,
-                            center = Offset(center.x, center.y + 1.8.dp.toPx())
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    haloColor.copy(alpha = haloAlpha),
+                                    Color.Transparent
+                                ),
+                                center = center,
+                                radius = haloRadius
+                            ),
+                            radius = haloRadius,
+                            center = center
                         )
-                        // Apple pure white thumb base
+
+                        // Physical liquid drop shadow
                         drawCircle(
-                            color = Color(0xFFFFFFFF),
+                            color = Color.Black.copy(alpha = 0.40f),
+                            radius = thumbRadius,
+                            center = Offset(center.x, center.y + 2.dp.toPx())
+                        )
+
+                        // Apple water droplet body (radial gradient lens)
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFFFFFFF),
+                                    Color(0xFFF2F4F8),
+                                    Color(0xFFD6DBE5)
+                                ),
+                                center = Offset(center.x - thumbRadius * 0.25f, center.y - thumbRadius * 0.25f),
+                                radius = thumbRadius
+                            ),
                             radius = thumbRadius,
                             center = center
                         )
-                        // Specular hairline rim
+
+                        // Specular water glint highlight (top-left dewdrop reflection)
                         drawCircle(
-                            color = Color.Black.copy(alpha = 0.08f),
-                            radius = thumbRadius,
-                            center = center,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.8.dp.toPx())
+                            color = Color.White.copy(alpha = 0.95f),
+                            radius = thumbRadius * 0.30f,
+                            center = Offset(center.x - thumbRadius * 0.28f, center.y - thumbRadius * 0.28f)
                         )
 
-                        // Subtle active accent indicator dot on drag or warning
-                        if (isDragged || isWarning) {
-                            val dotColor = if (isWarning) GlassTokens.IosRed else accentColor
-                            drawCircle(
-                                color = dotColor,
-                                radius = 2.8.dp.toPx(),
-                                center = center
-                            )
-                        }
+                        // Active fluid iris core
+                        val dotColor = if (isWarning) GlassTokens.IosRed else accentColor
+                        drawCircle(
+                            color = dotColor,
+                            radius = if (isDragged) 3.5.dp.toPx() else 2.6.dp.toPx(),
+                            center = center
+                        )
+                        // Tiny highlight in iris
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.85f),
+                            radius = 1.0.dp.toPx(),
+                            center = Offset(center.x - 0.8.dp.toPx(), center.y - 0.8.dp.toPx())
+                        )
+
+                        // Water droplet surface tension bevel rim
+                        drawCircle(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.65f),
+                                    Color.Black.copy(alpha = 0.10f),
+                                    Color.White.copy(alpha = 0.25f)
+                                ),
+                                start = Offset(center.x - thumbRadius, center.y - thumbRadius),
+                                end = Offset(center.x + thumbRadius, center.y + thumbRadius)
+                            ),
+                            radius = thumbRadius,
+                            center = center,
+                            style = Stroke(width = 0.9.dp.toPx())
+                        )
                     }
                 }
             },
@@ -441,35 +501,60 @@ fun LiquidSlider(
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(7.dp)
+                        .height(8.dp)
                         .clip(GlassTokens.radiusPill)
                 ) {
-                    // Apple recessed background track (System Gray 5 / dark subtle)
+                    // Liquid trough well (deep fluid depression)
                     drawRoundRect(
-                        color = Color(0xFF2C2C2E),
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color(0xFF0F1015),
+                                Color(0xFF1E202A)
+                            )
+                        ),
                         cornerRadius = CornerRadius(size.height / 2, size.height / 2)
                     )
-                    // Inner hairline top edge for machined depth
+                    // Top liquid meniscus rim (water surface tension catch)
                     drawRoundRect(
-                        color = Color.White.copy(alpha = 0.06f),
+                        brush = Brush.horizontalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.22f),
+                                Color.White.copy(alpha = 0.06f),
+                                Color.White.copy(alpha = 0.16f)
+                            )
+                        ),
                         cornerRadius = CornerRadius(size.height / 2, size.height / 2),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.6.dp.toPx())
+                        style = Stroke(width = 0.8.dp.toPx())
                     )
 
                     val activeWidth = size.width * fraction
                     if (activeWidth > 0f) {
                         val activeColor = if (isWarning) GlassTokens.IosRed else accentColor
-                        // Apple Solid / Subtle Vibrant Progress Bar
+                        // Vibrant fluid progress fill
                         drawRoundRect(
                             brush = Brush.horizontalGradient(
                                 colors = listOf(
+                                    activeColor.copy(alpha = 0.88f),
                                     activeColor,
-                                    if (isWarning) GlassTokens.IosRed else accentColor.copy(alpha = 0.82f)
+                                    activeColor.copy(alpha = 0.95f)
                                 ),
-                                startX = 0f,
-                                endX = size.width
+                                start = 0f,
+                                endX = activeWidth
                             ),
                             size = Size(activeWidth, size.height),
+                            cornerRadius = CornerRadius(size.height / 2, size.height / 2)
+                        )
+                        // Specular water sheen running along the top half of active track
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.45f),
+                                    Color.White.copy(alpha = 0.0f)
+                                ),
+                                startY = 0f,
+                                endY = size.height * 0.55f
+                            ),
+                            size = Size(activeWidth, size.height * 0.55f),
                             cornerRadius = CornerRadius(size.height / 2, size.height / 2)
                         )
                     }
@@ -490,6 +575,8 @@ fun ABCompareBar(
     isBypassed: Boolean,
     onToggle: () -> Unit,
     reduceGlass: Boolean = false,
+    gainMatchedAB: Boolean = false,
+    onToggleGainMatched: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -505,20 +592,25 @@ fun ABCompareBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Apple Control Center Circular Accessory Pill
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
+                // Apple Control Center Circular Accessory Pill with Liquid Glass Sheen
                 Box(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
                         .background(
-                            if (isBypassed) Color(0xFF2C2C2E)
-                            else GlassTokens.IosBlue.copy(alpha = 0.22f)
+                            if (isBypassed) Brush.verticalGradient(listOf(Color(0xFF32343E), Color(0xFF1E2028)))
+                            else Brush.verticalGradient(listOf(GlassTokens.IosBlue.copy(alpha = 0.35f), GlassTokens.IosBlue.copy(alpha = 0.15f)))
                         )
                         .border(
                             1.dp,
-                            if (isBypassed) Color.White.copy(alpha = 0.12f)
-                            else GlassTokens.IosBlue.copy(alpha = 0.65f),
+                            if (isBypassed) Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.06f)))
+                            else Brush.verticalGradient(listOf(GlassTokens.IosBlue.copy(alpha = 0.85f), GlassTokens.IosBlue.copy(alpha = 0.35f))),
                             CircleShape
                         ),
                     contentAlignment = Alignment.Center
@@ -530,44 +622,81 @@ fun ABCompareBar(
                         modifier = Modifier.size(19.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Text(
                         text = if (isBypassed) "Original Raw Sound (Bypass)" else "Daydream Restored Audio",
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (isBypassed) GlassTokens.TextPrimary else GlassTokens.IosBlue
+                        color = if (isBypassed) GlassTokens.TextPrimary else GlassTokens.IosBlue,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (isBypassed) "Bypass active — tap for instant <50ms restoration" else "Tap to instantly audit unprocessed raw input",
+                        text = if (isBypassed) {
+                            if (gainMatchedAB) "Bypass active (Loudness Matched)" else "Bypass active — tap for instant restoration"
+                        } else {
+                            if (gainMatchedAB) "Loudness Matched A/B Active" else "Tap to audit unprocessed raw input"
+                        },
                         fontSize = 11.sp,
-                        color = GlassTokens.TextSecondary
+                        color = GlassTokens.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            // Apple iOS Status Capsule
-            Box(
-                modifier = Modifier
-                    .clip(GlassTokens.radiusPill)
-                    .background(
-                        if (isBypassed) Color.White.copy(alpha = 0.08f)
-                        else GlassTokens.IosGreen.copy(alpha = 0.18f)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onToggleGainMatched != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(
+                                if (gainMatchedAB) GlassTokens.IosTeal.copy(alpha = 0.22f)
+                                else Color.White.copy(alpha = 0.06f)
+                            )
+                            .border(
+                                0.8.dp,
+                                if (gainMatchedAB) GlassTokens.IosTeal.copy(alpha = 0.65f)
+                                else Color.White.copy(alpha = 0.14f),
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onToggleGainMatched() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "GAIN-MATCH",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (gainMatchedAB) GlassTokens.IosTeal else GlassTokens.TextSecondary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+
+                // Apple iOS Status Capsule with Liquid Specular Sheen
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(
+                            if (isBypassed) Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.04f)))
+                            else Brush.verticalGradient(listOf(GlassTokens.IosGreen.copy(alpha = 0.28f), GlassTokens.IosGreen.copy(alpha = 0.10f)))
+                        )
+                        .border(
+                            1.dp,
+                            if (isBypassed) Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.24f), Color.White.copy(alpha = 0.08f)))
+                            else Brush.verticalGradient(listOf(GlassTokens.IosGreen.copy(alpha = 0.80f), GlassTokens.IosGreen.copy(alpha = 0.30f))),
+                            GlassTokens.radiusPill
+                        )
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (isBypassed) "RAW" else "ACTIVE",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosGreen
                     )
-                    .border(
-                        1.dp,
-                        if (isBypassed) Color.White.copy(alpha = 0.16f)
-                        else GlassTokens.IosGreen.copy(alpha = 0.60f),
-                        GlassTokens.radiusPill
-                    )
-                    .padding(horizontal = 11.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = if (isBypassed) "RAW" else "ACTIVE",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosGreen
-                )
+                }
             }
         }
     }
@@ -1255,9 +1384,19 @@ fun <T> IosSegmentedControl(
             .fillMaxWidth()
             .height(34.dp)
             .clip(GlassTokens.radiusMd)
-            .background(Color(0xFF161618))
-            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusMd)
-            .padding(2.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF101115), Color(0xFF191B22))
+                )
+            )
+            .border(
+                0.8.dp,
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.05f))
+                ),
+                GlassTokens.radiusMd
+            )
+            .padding(2.5.dp)
     ) {
         val tabWidth = maxWidth / items.size
         val animatedOffset by animateDpAsState(
@@ -1265,15 +1404,31 @@ fun <T> IosSegmentedControl(
             animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f),
             label = "ios_seg_offset"
         )
-        // Sliding active white/tinted pill
+        // Sliding active liquid glass pill with dual-stop specular sheen
         Box(
             modifier = Modifier
                 .offset(x = animatedOffset)
                 .width(tabWidth)
                 .fillMaxHeight()
                 .clip(GlassTokens.radiusSm)
-                .background(Color(0xFF2C2C2E))
-                .border(0.5.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusSm)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFF383C4A),
+                            Color(0xFF22242D)
+                        )
+                    )
+                )
+                .border(
+                    0.8.dp,
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.36f),
+                            Color.White.copy(alpha = 0.08f)
+                        )
+                    ),
+                    GlassTokens.radiusSm
+                )
         )
         Row(modifier = Modifier.fillMaxSize()) {
             val haptic = LocalHapticFeedback.current
@@ -1289,7 +1444,8 @@ fun <T> IosSegmentedControl(
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
                             onSelect(index)
-                        },
+                        }
+                        .padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -1297,7 +1453,8 @@ fun <T> IosSegmentedControl(
                         fontSize = 11.sp,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (isSelected) GlassTokens.TextPrimary else GlassTokens.TextSecondary,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -2434,17 +2591,33 @@ fun SoundTargetCarousel(
         ) {
             targets.forEach { target ->
                 val isSelected = target.id == activeTargetId
-                val targetBorder = if (isSelected) GlassTokens.IosBlue else Color(0xFF28282A)
-                val targetBg = if (isSelected) Color(0xFF1C2433) else Color(0xFF141416)
+                val targetBorder = if (isSelected) {
+                    Brush.verticalGradient(
+                        listOf(GlassTokens.IosBlue, GlassTokens.IosTeal.copy(alpha = 0.7f))
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.04f))
+                    )
+                }
+                val targetBg = if (isSelected) {
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF222C3E), Color(0xFF141924))
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF1D1F2A), Color(0xFF111218))
+                    )
+                }
 
                 Box(
                     modifier = Modifier
-                        .width(135.dp)
+                        .width(138.dp)
                         .clip(GlassTokens.radiusMd)
                         .background(targetBg)
                         .border(
-                            width = if (isSelected) 1.2.dp else 0.7.dp,
-                            color = targetBorder,
+                            width = if (isSelected) 1.2.dp else 0.8.dp,
+                            brush = targetBorder,
                             shape = GlassTokens.radiusMd
                         )
                         .clickable {
@@ -2453,7 +2626,7 @@ fun SoundTargetCarousel(
                                 onSelectTarget(target)
                             }
                         }
-                        .padding(10.dp)
+                        .padding(11.dp)
                 ) {
                     Column {
                         Row(
@@ -2466,20 +2639,26 @@ fun SoundTargetCarousel(
                                 Box(
                                     modifier = Modifier
                                         .clip(GlassTokens.radiusPill)
-                                        .background(GlassTokens.IosBlue)
-                                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(GlassTokens.IosBlue, GlassTokens.IosTeal)
+                                            )
+                                        )
+                                        .border(0.6.dp, Color.White.copy(alpha = 0.35f), GlassTokens.radiusPill)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text("ACTIVE", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
                             }
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(7.dp))
                         Text(
                             text = target.title,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = GlassTokens.TextPrimary,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
@@ -2526,16 +2705,31 @@ fun HearingComfortBadge(
         modifier = modifier
             .fillMaxWidth()
             .clip(GlassTokens.radiusMd)
-            .background(Color(0xFF141416))
-            .border(0.8.dp, Color(0xFF28282A), GlassTokens.radiusMd)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF1B1D27), Color(0xFF111218))
+                )
+            )
+            .border(
+                0.8.dp,
+                Brush.linearGradient(
+                    listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.05f))
+                ),
+                GlassTokens.radiusMd
+            )
+            .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
                 Box(
                     modifier = Modifier
                         .size(10.dp)
@@ -2543,7 +2737,7 @@ fun HearingComfortBadge(
                         .background(statusColor)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "$dBSpl dB SPL",
@@ -2556,13 +2750,17 @@ fun HearingComfortBadge(
                             text = statusText,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
-                            color = statusColor
+                            color = statusColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Text(
                         text = "Apple Health Hearing Protection Standard",
                         fontSize = 9.sp,
-                        color = GlassTokens.TextMuted
+                        color = GlassTokens.TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -2571,17 +2769,21 @@ fun HearingComfortBadge(
                 Box(
                     modifier = Modifier
                         .clip(GlassTokens.radiusPill)
-                        .background(if (isLimiterActive) GlassTokens.IosBlue.copy(alpha = 0.22f) else Color(0xFF242426))
+                        .background(
+                            if (isLimiterActive) Brush.verticalGradient(listOf(GlassTokens.IosBlue.copy(alpha = 0.32f), GlassTokens.IosBlue.copy(alpha = 0.12f)))
+                            else Brush.verticalGradient(listOf(Color(0xFF2E303A), Color(0xFF1C1E26)))
+                        )
                         .border(
                             0.8.dp,
-                            if (isLimiterActive) GlassTokens.IosBlue else Color(0xFF38383A),
+                            if (isLimiterActive) Brush.verticalGradient(listOf(GlassTokens.IosBlue, GlassTokens.IosBlue.copy(alpha = 0.4f)))
+                            else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.05f))),
                             GlassTokens.radiusPill
                         )
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onToggleLimiter()
                         }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 9.dp, vertical = 4.5.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -2725,6 +2927,1609 @@ fun SavePresetDialog(
     )
 }
 
+/**
+ * Pro Audio Goniometer & Phase Correlation Meter (-1.0 to +1.0)
+ * Visualizes stereo phase coherence in real time to prevent mono cancellation.
+ */
+@Composable
+fun PhaseCorrelationMeter(
+    correlation: Float,
+    modifier: Modifier = Modifier
+) {
+    val clamped = correlation.coerceIn(-1.0f, 1.0f)
+    val animatedCorr by animateFloatAsState(
+        targetValue = clamped,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
+        label = "phase_corr"
+    )
 
+    val (statusText, statusColor) = when {
+        clamped < -0.3f -> "Anti-Phase" to GlassTokens.IosRed
+        clamped < 0.1f -> "Weak Center" to GlassTokens.IosOrange
+        clamped < 0.6f -> "Wide Stereo" to GlassTokens.IosYellow
+        else -> "Mono Safe" to GlassTokens.IosGreen
+    }
 
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "PHASE CORRELATION",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = GlassTokens.TextSecondary,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.weight(1f, fill = false),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(statusColor)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = String.format("%+.2f (%s)", clamped, statusText),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = statusColor,
+                    maxLines = 1
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Meter Track with liquid recessed well and surface rim
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(14.dp)
+                .clip(GlassTokens.radiusPill)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF0F1015), Color(0xFF1B1D26))
+                    )
+                )
+                .border(
+                    0.8.dp,
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.06f))
+                    ),
+                    GlassTokens.radiusPill
+                )
+                .padding(horizontal = 4.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            // Zone Gradients
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val midX = w / 2f
+
+                // Left track (-1 to 0): Red to Yellow
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFFFF453A).copy(alpha = 0.35f), Color(0xFFFFD60A).copy(alpha = 0.25f)),
+                        startX = 0f,
+                        endX = midX
+                    ),
+                    topLeft = Offset(0f, 0f),
+                    size = Size(midX, h)
+                )
+
+                // Right track (0 to +1): Yellow to Green
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFFFFD60A).copy(alpha = 0.25f), Color(0xFF30D158).copy(alpha = 0.35f)),
+                        startX = midX,
+                        endX = w
+                    ),
+                    topLeft = Offset(midX, 0f),
+                    size = Size(w - midX, h)
+                )
+
+                // Center line at 0.0
+                drawLine(
+                    color = Color.White.copy(alpha = 0.55f),
+                    start = Offset(midX, 0f),
+                    end = Offset(midX, h),
+                    strokeWidth = 1.dp.toPx()
+                )
+            }
+
+            // Animated needle / indicator pill
+            androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val totalWidth = maxWidth
+                val normPos = ((animatedCorr + 1.0f) / 2.0f).coerceIn(0f, 1f)
+                val indicatorOffset = (totalWidth - 8.dp) * normPos
+
+                Box(
+                    modifier = Modifier
+                        .offset(x = indicatorOffset)
+                        .width(8.dp)
+                        .fillMaxHeight()
+                        .clip(GlassTokens.radiusPill)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.White, statusColor)
+                            )
+                        )
+                        .border(0.6.dp, Color.White, GlassTokens.radiusPill)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Scale labels
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("-1 (Anti-Phase)", fontSize = 10.sp, color = GlassTokens.IosRed, fontWeight = FontWeight.Medium)
+            Text("0 (Stereo)", fontSize = 10.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.Medium)
+            Text("+1 (Mono Safe)", fontSize = 10.sp, color = GlassTokens.IosGreen, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+/**
+ * Studio Crest Factor (Dynamic Range) & Peak/RMS Meter Badge
+ * Shows real-time dBFS peak, RMS loudness, and crest factor with balanced columns and liquid glass surface.
+ */
+@Composable
+fun CrestFactorBadge(
+    crestFactorDb: Float,
+    peakDbfs: Float,
+    rmsDbfs: Float,
+    modifier: Modifier = Modifier
+) {
+    val (ratingText, ratingColor) = when {
+        crestFactorDb >= 14f -> "Open Dynamic" to GlassTokens.IosTeal
+        crestFactorDb >= 9f -> "Mastered Commercial" to GlassTokens.IosGreen
+        crestFactorDb >= 6f -> "Modern Loud" to GlassTokens.IosYellow
+        else -> "Squashed / Over-limited" to GlassTokens.IosRed
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusMd)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF1B1D26), Color(0xFF121319))
+                )
+            )
+            .border(
+                0.8.dp,
+                Brush.linearGradient(
+                    listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.05f))
+                ),
+                GlassTokens.radiusMd
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1.1f)
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    text = "DYNAMIC RANGE (CREST FACTOR)",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = GlassTokens.TextSecondary,
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (peakDbfs <= -90f) "DR -- dB" else String.format("DR %.1f dB", crestFactorDb.coerceIn(0f, 30f)),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ratingColor,
+                        maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (peakDbfs <= -90f) "Idle" else ratingText,
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(0.9f),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = if (peakDbfs <= -90f) "Peak: -∞ dBFS" else String.format("Peak: %+.1f dBFS", peakDbfs),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (peakDbfs >= -0.1f) GlassTokens.IosRed else GlassTokens.TextPrimary,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (rmsDbfs <= -90f) "RMS: -∞ dBFS" else String.format("RMS: %+.1f dBFS", rmsDbfs),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = GlassTokens.TextSecondary,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/**
+ * ITU-R BS.1770-4 & EBU R128 Broadcast Loudness Suite
+ * VisionOS-styled floating badge with Momentary, Short-Term, Gated Integrated LUFS, LRA and 4x True Peak (dBTP).
+ * Includes streaming target compliance deltas for Spotify, Apple Music, YouTube, and Club Masters.
+ */
+@Composable
+fun LufsLoudnessMeter(
+    metrics: LufsMetrics,
+    currentTarget: StreamingTarget,
+    onSelectTarget: (StreamingTarget) -> Unit,
+    reduceGlass: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .floatingGlass(reduceGlass)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Header & Platform Target Selector
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = null,
+                        tint = GlassTokens.IosIndigo,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "EBU R128 / ITU-R BS.1770-4 LOUDNESS",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Streaming Platform Compliance Delta Pill
+                val delta = metrics.integratedLufs - currentTarget.targetLufs
+                val isHot = delta > 0.5f
+                val isLow = delta < -2.0f
+                val deltaColor = when {
+                    isHot -> GlassTokens.IosOrange
+                    isLow -> GlassTokens.IosYellow
+                    else -> GlassTokens.IosGreen
+                }
+                val deltaText = when {
+                    metrics.integratedLufs <= -60f -> "Target: ${currentTarget.targetLufs.toInt()} LUFS"
+                    isHot -> String.format("+%.1f LU Hot", delta)
+                    isLow -> String.format("%.1f LU Low", delta)
+                    else -> String.format("%.1f LU Match", delta)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(deltaColor.copy(alpha = 0.15f))
+                        .border(0.8.dp, deltaColor.copy(alpha = 0.5f), GlassTokens.radiusPill)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = deltaText,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = deltaColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Platform Targets Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                StreamingTarget.values().forEach { target ->
+                    val isSelected = target == currentTarget
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(if (isSelected) GlassTokens.IosIndigo else Color.White.copy(alpha = 0.05f))
+                            .border(
+                                0.8.dp,
+                                if (isSelected) GlassTokens.IosIndigo else Color.White.copy(alpha = 0.12f),
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onSelectTarget(target) }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = "${target.platform} (${target.targetLufs.toInt()})",
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Color.White else GlassTokens.TextPrimary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Main Integrated LUFS Readout + Gauge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "INTEGRATED LOUDNESS (GATED)",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.4.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (metrics.integratedLufs <= -60f) "-∞ LUFS" else String.format("%.1f LUFS", metrics.integratedLufs),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (metrics.integratedLufs > currentTarget.targetLufs + 0.5f) GlassTokens.IosOrange else GlassTokens.TextPrimary
+                    )
+                }
+
+                // True Peak Meter & Loudness Range
+                Column(horizontalAlignment = Alignment.End) {
+                    val tp = metrics.truePeakDbtp
+                    val isTpClipping = tp > currentTarget.maxTruePeakDbtp
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "True Peak: ",
+                            fontSize = 11.sp,
+                            color = GlassTokens.TextSecondary
+                        )
+                        Text(
+                            text = if (tp <= -60f) "-∞ dBTP" else String.format("%+.1f dBTP", tp),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isTpClipping) GlassTokens.IosRed else GlassTokens.TextPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = String.format("LRA: %.1f LU (Range)", metrics.loudnessRangeLu),
+                        fontSize = 11.sp,
+                        color = GlassTokens.IosTeal
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Sub-metrics Bar (Momentary 400ms & Short-Term 3s)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(GlassTokens.radiusSm)
+                    .background(Color(0xFF14151B))
+                    .border(0.6.dp, Color.White.copy(alpha = 0.08f), GlassTokens.radiusSm)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Momentary (400ms): ",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary
+                    )
+                    Text(
+                        text = if (metrics.momentaryLufs <= -60f) "-∞" else String.format("%.1f", metrics.momentaryLufs),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextPrimary
+                    )
+                }
+                Row {
+                    Text(
+                        text = "Short-Term (3s): ",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary
+                    )
+                    Text(
+                        text = if (metrics.shortTermLufs <= -60f) "-∞" else String.format("%.1f", metrics.shortTermLufs),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextPrimary
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dynamic Frequency De-Esser (6.5kHz Sibilance Tamer)
+ * Real-time dynamic notch attenuation with live Gain Reduction (GR) metering.
+ */
+@Composable
+fun DynamicDeEsserBadge(
+    enabled: Boolean,
+    onToggleEnabled: (Boolean) -> Unit,
+    thresholdDb: Float,
+    onThresholdChange: (Float) -> Unit,
+    maxReductionDb: Float,
+    onMaxReductionChange: (Float) -> Unit,
+    currentReductionDb: Float,
+    reduceGlass: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .floatingGlass(reduceGlass)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Dynamic Frequency De-Esser",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.TextPrimary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(GlassTokens.radiusPill)
+                                .background(GlassTokens.IosPurple.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "6.5 kHz Band",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.IosPurple
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Real-time dynamic notch clamps vocal sibilance ('s', 'sh', 't') without dulling overall air.",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { onToggleEnabled(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = GlassTokens.IosPurple
+                    )
+                )
+            }
+
+            if (enabled) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Live Gain Reduction (GR) Meter
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "LIVE SIBILANCE REDUCTION",
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = if (currentReductionDb > 0.05f) String.format("-%.1f dB GR", currentReductionDb) else "0.0 dB",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (currentReductionDb > 0.05f) GlassTokens.IosPurple else GlassTokens.TextSecondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Meter Bar
+                val grFraction = (currentReductionDb / maxReductionDb.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF191B24))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(grFraction)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(GlassTokens.IosPurple.copy(alpha = 0.6f), GlassTokens.IosPurple)
+                                )
+                            )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LiquidSlider(
+                    title = "Sensitivity Threshold",
+                    value = thresholdDb,
+                    onValueChange = onThresholdChange,
+                    valueRange = -36f..-6f,
+                    unit = " dBFS",
+                    technicalValue = String.format("%.1f dBFS", thresholdDb),
+                    showTechnical = true,
+                    accentColor = GlassTokens.IosPurple,
+                    reduceGlass = reduceGlass
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                LiquidSlider(
+                    title = "Max Attenuation",
+                    value = maxReductionDb,
+                    onValueChange = onMaxReductionChange,
+                    valueRange = 1f..18f,
+                    unit = " dB",
+                    technicalValue = String.format("-%.1f dB", maxReductionDb),
+                    showTechnical = true,
+                    accentColor = GlassTokens.IosPurple,
+                    reduceGlass = reduceGlass
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Studio Calibration & Test Tone Generator Card
+ * Real synthesizer for hardware calibration, room alignment & listening tests.
+ */
+@Composable
+fun TestToneGeneratorCard(
+    currentMode: TestToneMode,
+    onSelectMode: (TestToneMode) -> Unit,
+    levelDb: Float,
+    onLevelChange: (Float) -> Unit,
+    reduceGlass: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val isToneActive = currentMode != TestToneMode.OFF
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .floatingGlass(reduceGlass)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        imageVector = if (isToneActive) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                        contentDescription = null,
+                        tint = if (isToneActive) GlassTokens.IosOrange else GlassTokens.TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "CALIBRATION TEST TONES",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (isToneActive) {
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(GlassTokens.IosRed.copy(alpha = 0.2f))
+                            .border(0.8.dp, GlassTokens.IosRed.copy(alpha = 0.6f), GlassTokens.radiusPill)
+                            .clickable { onSelectMode(TestToneMode.OFF) }
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "MUTE TONE",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.IosRed
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Waveform Selector Chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                TestToneMode.values().forEach { mode ->
+                    val isSelected = mode == currentMode
+                    val activeColor = if (mode == TestToneMode.OFF) GlassTokens.TextSecondary else GlassTokens.IosOrange
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(if (isSelected) activeColor else Color.White.copy(alpha = 0.05f))
+                            .border(
+                                0.8.dp,
+                                if (isSelected) activeColor else Color.White.copy(alpha = 0.12f),
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onSelectMode(mode) }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = mode.displayName,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) (if (mode == TestToneMode.OFF) Color.White else Color.Black) else GlassTokens.TextPrimary
+                        )
+                    }
+                }
+            }
+
+            if (isToneActive) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(GlassTokens.radiusSm)
+                        .background(GlassTokens.IosOrange.copy(alpha = 0.12f))
+                        .border(0.6.dp, GlassTokens.IosOrange.copy(alpha = 0.35f), GlassTokens.radiusSm)
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = "SYNTHESIZING: ${currentMode.description}",
+                        fontSize = 11.sp,
+                        color = GlassTokens.IosOrange,
+                        lineHeight = 15.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LiquidSlider(
+                    title = "Generator Output Trim",
+                    value = levelDb,
+                    onValueChange = onLevelChange,
+                    valueRange = -36f..0f,
+                    unit = " dBFS",
+                    technicalValue = String.format("%.1f dBFS", levelDb),
+                    showTechnical = true,
+                    accentColor = GlassTokens.IosOrange,
+                    reduceGlass = reduceGlass
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Infrasonic Sub-Cut Filter Card
+ * 18-24 dB/octave cascaded Butterworth highpass filter.
+ */
+@Composable
+fun MasteringSubCutCard(
+    currentFilter: SubCutFilter,
+    onSelectFilter: (SubCutFilter) -> Unit,
+    reduceGlass: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .floatingGlass(reduceGlass)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = "Infrasonic Sub-Cut Filter",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    Text(
+                        text = "High-order Butterworth filter removes inaudible speaker cone excursion to reclaim mastering headroom.",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(GlassTokens.IosTeal.copy(alpha = 0.2f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = currentFilter.slope,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.IosTeal
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SubCutFilter.values().forEach { filter ->
+                    val isSelected = filter == currentFilter
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(GlassTokens.radiusPill)
+                            .background(if (isSelected) GlassTokens.IosTeal else Color.White.copy(alpha = 0.05f))
+                            .border(
+                                0.8.dp,
+                                if (isSelected) GlassTokens.IosTeal else Color.White.copy(alpha = 0.12f),
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onSelectFilter(filter) }
+                            .padding(vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = filter.label,
+                            fontSize = 11.5.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.Black else GlassTokens.TextPrimary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Stereo Balance Trim & Polarity Inversion Card
+ * +/- 6dB balance trim and independent channel polarity reversal (Ø L, Ø R).
+ */
+@Composable
+fun StereoBalanceAndPolarityCard(
+    balanceTrimDb: Float,
+    onBalanceTrimChange: (Float) -> Unit,
+    invertLeftPolarity: Boolean,
+    onToggleInvertLeft: (Boolean) -> Unit,
+    invertRightPolarity: Boolean,
+    onToggleInvertRight: (Boolean) -> Unit,
+    reduceGlass: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .floatingGlass(reduceGlass)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = "Stereo Balance & Phase Inversion",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary
+                    )
+                    Text(
+                        text = "Fine-tune monitor balance & test stereo microphone phase cancellation with 180° polarity flips.",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Ø Left button
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(
+                                if (invertLeftPolarity) GlassTokens.IosRed.copy(alpha = 0.3f)
+                                else Color.White.copy(alpha = 0.06f)
+                            )
+                            .border(
+                                0.8.dp,
+                                if (invertLeftPolarity) GlassTokens.IosRed
+                                else Color.White.copy(alpha = 0.15f),
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onToggleInvertLeft(!invertLeftPolarity) }
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Ø L",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (invertLeftPolarity) GlassTokens.IosRed else GlassTokens.TextPrimary
+                        )
+                    }
+
+                    // Ø Right button
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(
+                                if (invertRightPolarity) GlassTokens.IosRed.copy(alpha = 0.3f)
+                                else Color.White.copy(alpha = 0.06f)
+                            )
+                            .border(
+                                0.8.dp,
+                                if (invertRightPolarity) GlassTokens.IosRed
+                                else Color.White.copy(alpha = 0.15f),
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onToggleInvertRight(!invertRightPolarity) }
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Ø R",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (invertRightPolarity) GlassTokens.IosRed else GlassTokens.TextPrimary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            LiquidSlider(
+                title = "Stereo Balance Trim",
+                value = balanceTrimDb,
+                onValueChange = onBalanceTrimChange,
+                valueRange = -6f..6f,
+                unit = " dB",
+                technicalValue = when {
+                    balanceTrimDb < -0.1f -> String.format("L %+.1f dB", balanceTrimDb)
+                    balanceTrimDb > 0.1f -> String.format("R %+.1f dB", balanceTrimDb)
+                    else -> "Center (0.0 dB)"
+                },
+                showTechnical = true,
+                accentColor = GlassTokens.IosBlue,
+                reduceGlass = reduceGlass
+            )
+        }
+    }
+}
+
+/**
+ * Real-Time 2D Phosphor Lissajous Goniometer & Vector Scope (Pro Studio Suite 2.0).
+ * Projects stereo phase coherence onto orthogonal Mid/Side space:
+ * - Vertical (+M / -M): Monophonic phantom center (lead vocal, bass, kick).
+ * - Horizontal (-S / +S): 100% decorrelated side energy.
+ * - Diagonal (±45°): Dedicated Left and Right stereo boundaries.
+ * - Reactive anti-phase aura when correlation falls below zero.
+ */
+@Composable
+fun LissajousVectorScope(
+    points: FloatArray,
+    phaseCorrelation: Float,
+    modifier: Modifier = Modifier,
+    reduceGlass: Boolean = false,
+    reduceMotion: Boolean = false
+) {
+    val isAntiPhase = phaseCorrelation < -0.15f
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusMd)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF0F1015),
+                        Color(0xFF161820)
+                    )
+                )
+            )
+            .border(
+                1.dp,
+                if (isAntiPhase) GlassTokens.IosRed.copy(alpha = 0.6f) else GlassTokens.IosSeparator,
+                GlassTokens.radiusMd
+            )
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Text(
+                        text = "VECTOR SCOPE (LISSAJOUS GONIOMETER)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Orthogonal M/S Phase Space • Phosphor Trail",
+                        fontSize = 10.sp,
+                        color = GlassTokens.TextSecondary.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (isAntiPhase) {
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(GlassTokens.IosRed.copy(alpha = 0.2f))
+                            .border(0.8.dp, GlassTokens.IosRed, GlassTokens.radiusPill)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "ANTI-PHASE",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.IosRed
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(GlassTokens.IosGreen.copy(alpha = 0.15f))
+                            .border(0.8.dp, GlassTokens.IosGreen.copy(alpha = 0.5f), GlassTokens.radiusPill)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "PHASE: ${String.format("%+.2f", phaseCorrelation)}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.IosGreen
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Canvas Vector Scope
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .clip(GlassTokens.radiusSm)
+                    .background(Color(0xFF08090C))
+                    .border(0.6.dp, GlassTokens.IosSeparator.copy(alpha = 0.5f), GlassTokens.radiusSm),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val cx = w / 2f
+                    val cy = h / 2f
+                    val radius = kotlin.math.min(cx, cy) * 0.88f
+
+                    // 1. Graticule concentric circles
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.05f),
+                        radius = radius * 0.33f,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 1f)
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.08f),
+                        radius = radius * 0.66f,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 1f)
+                    )
+                    drawCircle(
+                        color = if (isAntiPhase) GlassTokens.IosRed.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.18f),
+                        radius = radius,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 1.2f)
+                    )
+
+                    // 2. Graticule axes: Mid (vertical), Side (horizontal)
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.22f),
+                        start = Offset(cx, cy - radius),
+                        end = Offset(cx, cy + radius),
+                        strokeWidth = 1f
+                    )
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.22f),
+                        start = Offset(cx - radius, cy),
+                        end = Offset(cx + radius, cy),
+                        strokeWidth = 1f
+                    )
+
+                    // Diagonal L and R 45-degree guide axes
+                    val diagOffset = radius * 0.7071f
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.10f),
+                        start = Offset(cx - diagOffset, cy - diagOffset),
+                        end = Offset(cx + diagOffset, cy + diagOffset),
+                        strokeWidth = 0.8f
+                    )
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.10f),
+                        start = Offset(cx - diagOffset, cy + diagOffset),
+                        end = Offset(cx + diagOffset, cy - diagOffset),
+                        strokeWidth = 0.8f
+                    )
+
+                    // 3. Phosphor Vector Cloud
+                    val numPoints = points.size / 2
+                    if (numPoints > 1) {
+                        val phosphorColor = if (isAntiPhase) Color(0xFFFF453A) else Color(0xFF00F5D4)
+                        for (i in 0 until numPoints) {
+                            val px = points[i * 2]
+                            val py = points[i * 2 + 1]
+                            val screenX = cx + px * radius
+                            val screenY = cy - py * radius
+                            val progress = i.toFloat() / numPoints.toFloat()
+                            val alpha = 0.15f + progress * 0.75f
+                            drawCircle(
+                                color = phosphorColor.copy(alpha = alpha),
+                                radius = if (i == numPoints - 1) 3.5f else 1.8f,
+                                center = Offset(screenX, screenY)
+                            )
+                            if (i > 0) {
+                                val prevX = cx + points[(i - 1) * 2] * radius
+                                val prevY = cy - points[(i - 1) * 2 + 1] * radius
+                                drawLine(
+                                    color = phosphorColor.copy(alpha = alpha * 0.6f),
+                                    start = Offset(prevX, prevY),
+                                    end = Offset(screenX, screenY),
+                                    strokeWidth = 1.2f
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Graticule Axis Labels
+                Box(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+                    Text(
+                        text = "+M (Center)",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
+                    Text(
+                        text = "-M",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.3f),
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                    Text(
+                        text = "-S",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.4f),
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                    Text(
+                        text = "+S",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.4f),
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    )
+                    Text(
+                        text = "L",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.IosBlue.copy(alpha = 0.7f),
+                        modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 8.dp)
+                    )
+                    Text(
+                        text = "R",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.IosPurple.copy(alpha = 0.7f),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(end = 12.dp, top = 8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Footer info
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Pure Mono = Vertical Line | Wide Stereo = Ellipse | Anti-Phase = Horizontal",
+                    fontSize = 10.sp,
+                    color = GlassTokens.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Pro Studio Dynamic Transient Designer (SPL & Oxford TransMod Envelope Follower).
+ * Allows independent Attack (-12dB to +12dB) and Sustain (-12dB to +12dB) sculpting
+ * with live LED activity meters.
+ */
+@Composable
+fun TransientDesignerCard(
+    attackPercent: Float,
+    sustainPercent: Float,
+    attackActivity: Float,
+    sustainActivity: Float,
+    onAttackChange: (Float) -> Unit,
+    onSustainChange: (Float) -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier,
+    reduceGlass: Boolean = false
+) {
+    val attackGainDb = (attackPercent / 100f) * 12f
+    val sustainGainDb = (sustainPercent / 100f) * 12f
+
+    val attackLedActive = attackActivity > 0.05f
+    val sustainLedActive = sustainActivity > 0.05f
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusMd)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF13151D),
+                        Color(0xFF1A1D27)
+                    )
+                )
+            )
+            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusMd)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Text(
+                        text = "DYNAMIC TRANSIENT DESIGNER",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "SPL / Oxford TransMod Differential Envelope Follower",
+                        fontSize = 10.sp,
+                        color = GlassTokens.TextSecondary.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Reset button
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(Color.White.copy(alpha = 0.06f))
+                        .border(0.6.dp, Color.White.copy(alpha = 0.15f), GlassTokens.radiusPill)
+                        .clickable { onReset() }
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Reset 0dB",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = GlassTokens.TextPrimary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Attack Sculpt Slider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Live Attack Activity LED
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (attackLedActive) Color(0xFF00FFCC)
+                                else Color.White.copy(alpha = 0.15f)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "ATTACK SCULPT (τ = 1.5ms)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextPrimary
+                    )
+                }
+                Text(
+                    text = String.format("%+.1f dB", attackGainDb),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (attackPercent != 0f) Color(0xFF00FFCC) else GlassTokens.TextSecondary
+                )
+            }
+
+            LiquidSlider(
+                title = "",
+                value = attackPercent,
+                onValueChange = onAttackChange,
+                valueRange = -100f..100f,
+                unit = "%",
+                technicalValue = if (attackGainDb >= 0) "+${String.format("%.1f", attackGainDb)} dB Transient Punch" else "${String.format("%.1f", attackGainDb)} dB Softened Attack",
+                showTechnical = true,
+                accentColor = Color(0xFF00FFCC),
+                reduceGlass = reduceGlass
+            )
+
+            IosRowSeparator(modifier = Modifier.padding(vertical = 10.dp))
+
+            // Sustain Tail Slider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Live Sustain Activity LED
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (sustainLedActive) GlassTokens.IosOrange
+                                else Color.White.copy(alpha = 0.15f)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "SUSTAIN TAIL (τ = 180ms)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextPrimary
+                    )
+                }
+                Text(
+                    text = String.format("%+.1f dB", sustainGainDb),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (sustainPercent != 0f) GlassTokens.IosOrange else GlassTokens.TextSecondary
+                )
+            }
+
+            LiquidSlider(
+                title = "",
+                value = sustainPercent,
+                onValueChange = onSustainChange,
+                valueRange = -100f..100f,
+                unit = "%",
+                technicalValue = if (sustainGainDb >= 0) "+${String.format("%.1f", sustainGainDb)} dB Room & Body" else "${String.format("%.1f", sustainGainDb)} dB Gated Dryness",
+                showTechnical = true,
+                accentColor = GlassTokens.IosOrange,
+                reduceGlass = reduceGlass
+            )
+        }
+    }
+}
+
+/**
+ * Pro Studio Analog Harmonic Saturation Color Topology.
+ * Select between Triode Class-A (2nd even harmonics), Reel Tape (3rd odd harmonics),
+ * and Console Transformer iron core low-end hysteresis, with live THD % calculation.
+ */
+@Composable
+fun HarmonicSaturationCard(
+    selectedType: HarmonicSaturationType,
+    drivePercent: Float,
+    thdPercent: Float,
+    onTypeChange: (HarmonicSaturationType) -> Unit,
+    onDriveChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    reduceGlass: Boolean = false
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusMd)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF13141C),
+                        Color(0xFF1B1C26)
+                    )
+                )
+            )
+            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusMd)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Text(
+                        text = "ANALOG HARMONIC COLORATION",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Triode 2f₀ • Reel Tape 3f₀ • Transformer Hysteresis",
+                        fontSize = 10.sp,
+                        color = GlassTokens.TextSecondary.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Live THD % badge
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(
+                            if (thdPercent > 0.05f) GlassTokens.IosOrange.copy(alpha = 0.15f)
+                            else Color.White.copy(alpha = 0.06f)
+                        )
+                        .border(
+                            0.8.dp,
+                            if (thdPercent > 0.05f) GlassTokens.IosOrange.copy(alpha = 0.5f)
+                            else Color.White.copy(alpha = 0.15f),
+                            GlassTokens.radiusPill
+                        )
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "THD: ${String.format("%.2f", thdPercent)}%",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (thdPercent > 0.05f) GlassTokens.IosOrange else GlassTokens.TextSecondary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Topology Selector
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                HarmonicSaturationType.entries.forEach { type ->
+                    val isSelected = selectedType == type
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(if (isSelected) GlassTokens.IosOrange else GlassTokens.IosGroupedSecondary)
+                            .border(
+                                0.8.dp,
+                                if (isSelected) GlassTokens.IosOrange else GlassTokens.IosSeparator,
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onTypeChange(type) }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = type.label,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.Black else GlassTokens.TextPrimary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Topology Description Box
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(GlassTokens.radiusSm)
+                    .background(Color(0xFF0C0D12))
+                    .border(0.6.dp, GlassTokens.IosSeparator.copy(alpha = 0.5f), GlassTokens.radiusSm)
+                    .padding(8.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "${selectedType.label} • ${selectedType.order}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.IosOrange
+                    )
+                    Text(
+                        text = selectedType.description,
+                        fontSize = 10.sp,
+                        color = GlassTokens.TextSecondary,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Drive Slider
+            LiquidSlider(
+                title = "Harmonic Saturation Drive",
+                value = drivePercent,
+                onValueChange = onDriveChange,
+                valueRange = 0f..100f,
+                unit = "%",
+                technicalValue = if (drivePercent > 0f) "+${String.format("%.1f", (drivePercent / 100f) * 15f)} dB Drive (Auto-Level Comp)" else "Bypassed (0.0 dB)",
+                showTechnical = true,
+                accentColor = GlassTokens.IosOrange,
+                reduceGlass = reduceGlass
+            )
+        }
+    }
+}
+
+/**
+ * Pro Studio ISO 226 Fletcher-Munson Equal-Loudness Calibration.
+ * Calibrates low-volume listening balance (+4.5dB @ 85Hz, +2.5dB @ 8.5kHz)
+ * so engineers can audition mixes accurately without ear fatigue.
+ */
+@Composable
+fun FletcherMunsonBadge(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusSm)
+            .background(if (enabled) GlassTokens.IosIndigo.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
+            .border(
+                0.8.dp,
+                if (enabled) GlassTokens.IosIndigo else GlassTokens.IosSeparator,
+                GlassTokens.radiusSm
+            )
+            .clickable { onToggle(!enabled) }
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (enabled) GlassTokens.IosIndigo else Color.Gray)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "ISO 226 Fletcher-Munson Calibration",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextPrimary
+                    )
+                }
+                Text(
+                    text = "Inverse Phon curve (+4.5dB @ 85Hz, +2.5dB @ 8.5kHz) for low-volume mix translation without ear fatigue.",
+                    fontSize = 11.sp,
+                    color = GlassTokens.TextSecondary,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = GlassTokens.IosIndigo
+                )
+            )
+        }
+    }
+}
 

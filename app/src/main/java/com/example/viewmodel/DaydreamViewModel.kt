@@ -14,12 +14,20 @@ import com.example.model.AudioComplaint
 import com.example.model.CustomSoundPreset
 import com.example.model.DemoTrack
 import com.example.model.LocalTrack
+import com.example.model.MidSideMode
+import com.example.model.ReferenceMonitor
+import com.example.model.LimiterMode
 import com.example.model.OutputDevice
 import com.example.model.ParametricBand
 import com.example.model.PlainBand
 import com.example.model.PresetExportBundle
 import com.example.model.SoundTargetPreset
 import com.example.model.TimeMachinePreset
+import com.example.model.TestToneMode
+import com.example.model.SubCutFilter
+import com.example.model.StreamingTarget
+import com.example.model.LufsMetrics
+import com.example.model.HarmonicSaturationType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -157,6 +165,61 @@ data class DaydreamUiState(
     val varispeedMode: Boolean = true,
     val speedAppliedAsRequested: Boolean = true,
     val confirmedPlaybackSpeed: Float = 1.0f,
+
+    // Pro Studio Reference Suite
+    val midSideMode: MidSideMode = MidSideMode.STEREO,
+    val bassMonoMakerEnabled: Boolean = false,
+    val referenceMonitor: ReferenceMonitor = ReferenceMonitor.FLAT,
+    val limiterMode: LimiterMode = LimiterMode.SOFT_BRICKWALL,
+    val tapeDrivePercent: Float = 0f,
+    val reverbFreezeEnabled: Boolean = false,
+    val phaseCorrelation: Float = 0.85f,
+    val crestFactorDb: Float = 12.0f,
+    val peakDbfs: Float = -6.0f,
+    val rmsDbfs: Float = -18.0f,
+    val showDawExportDialog: Boolean = false,
+
+    // Pro Studio ITU-R BS.1770-4 LUFS & Streaming Loudness Suite
+    val lufsMetrics: LufsMetrics = LufsMetrics(),
+    val streamingTarget: StreamingTarget = StreamingTarget.SPOTIFY_14,
+
+    // Pro Studio Calibration & Test Tones
+    val testToneMode: TestToneMode = TestToneMode.OFF,
+    val testToneLevelDb: Float = -18f,
+
+    // Pro Studio Mastering Infrasonic Sub-Cut Filter
+    val subCutFilter: SubCutFilter = SubCutFilter.OFF,
+
+    // Pro Studio Dynamic Frequency De-Esser
+    val deEsserEnabled: Boolean = false,
+    val deEsserThresholdDb: Float = -18f,
+    val deEsserMaxReductionDb: Float = 6f,
+    val deEsserReductionDb: Float = 0f,
+
+    // Pro Studio Loudness-Matched A/B Monitoring
+    val gainMatchedABEnabled: Boolean = false,
+
+    // Pro Studio Dynamic Transient Designer (SPL / Oxford TransMod)
+    val transientAttackPercent: Float = 0f,
+    val transientSustainPercent: Float = 0f,
+    val transientAttackActivity: Float = 0f,
+    val transientSustainActivity: Float = 0f,
+
+    // Pro Studio Analog Harmonic Saturation Color Topology
+    val harmonicSaturationType: HarmonicSaturationType = HarmonicSaturationType.CLEAN,
+    val harmonicDrivePercent: Float = 0f,
+    val thdPercent: Float = 0f,
+
+    // Pro Studio ISO 226 Fletcher-Munson Equal-Loudness Calibration
+    val fletcherMunsonEnabled: Boolean = false,
+
+    // Pro Studio Lissajous Goniometer Vector Scope Points (256 (X, Y) coordinate pairs)
+    val vectorScopePoints: FloatArray = FloatArray(512),
+
+    // Pro Studio Stereo Balance Trim & Polarity Inversion
+    val stereoBalanceTrimDb: Float = 0f,
+    val invertLeftPolarity: Boolean = false,
+    val invertRightPolarity: Boolean = false,
 
     // Sound Targets & Custom Presets Bank
     val activeSoundTargetId: String? = null,
@@ -301,6 +364,37 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     showMonoWarning = isMono && state.spacePercent > 35f
                 )
             }
+        }
+
+        audioEngine.onStudioMetricsUpdated = { phase, crest, peak, rms ->
+            _uiState.update { state ->
+                state.copy(
+                    phaseCorrelation = phase,
+                    crestFactorDb = crest,
+                    peakDbfs = peak,
+                    rmsDbfs = rms
+                )
+            }
+        }
+
+        audioEngine.onLufsMetricsUpdated = { metrics ->
+            _uiState.update { it.copy(lufsMetrics = metrics) }
+        }
+
+        audioEngine.onDeEsserReductionUpdated = { reductionDb ->
+            _uiState.update { it.copy(deEsserReductionDb = reductionDb) }
+        }
+
+        audioEngine.onVectorScopeUpdated = { points ->
+            _uiState.update { it.copy(vectorScopePoints = points.clone()) }
+        }
+
+        audioEngine.onTransientActivityUpdated = { attack, sustain ->
+            _uiState.update { it.copy(transientAttackActivity = attack, transientSustainActivity = sustain) }
+        }
+
+        audioEngine.onThdUpdated = { thd ->
+            _uiState.update { it.copy(thdPercent = thd) }
         }
 
         // Listen for hardware output device changes (PRD FR-10)
@@ -801,6 +895,130 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(wallMaterial = material) }
     }
 
+    // Pro Studio Reference Suite Setters
+    fun setMidSideMode(mode: MidSideMode) {
+        audioEngine.midSideMode = mode
+        _uiState.update { it.copy(midSideMode = mode) }
+    }
+
+    fun setBassMonoMaker(enabled: Boolean) {
+        audioEngine.bassMonoMakerEnabled = enabled
+        _uiState.update { it.copy(bassMonoMakerEnabled = enabled) }
+    }
+
+    fun setReferenceMonitor(monitor: ReferenceMonitor) {
+        audioEngine.referenceMonitor = monitor
+        _uiState.update { it.copy(referenceMonitor = monitor) }
+    }
+
+    fun setLimiterMode(mode: LimiterMode) {
+        audioEngine.limiterMode = mode
+        _uiState.update { it.copy(limiterMode = mode) }
+    }
+
+    fun setTapeDrivePercent(percent: Float) {
+        val clamped = percent.coerceIn(0f, 100f)
+        audioEngine.tapeDrivePercent = clamped
+        _uiState.update { it.copy(tapeDrivePercent = clamped) }
+    }
+
+    fun setTransientAttackPercent(percent: Float) {
+        val clamped = percent.coerceIn(-100f, 100f)
+        audioEngine.transientAttackPercent = clamped
+        _uiState.update { it.copy(transientAttackPercent = clamped) }
+    }
+
+    fun setTransientSustainPercent(percent: Float) {
+        val clamped = percent.coerceIn(-100f, 100f)
+        audioEngine.transientSustainPercent = clamped
+        _uiState.update { it.copy(transientSustainPercent = clamped) }
+    }
+
+    fun setHarmonicSaturationType(type: HarmonicSaturationType) {
+        audioEngine.harmonicSaturationType = type
+        _uiState.update { it.copy(harmonicSaturationType = type) }
+    }
+
+    fun setHarmonicDrivePercent(percent: Float) {
+        val clamped = percent.coerceIn(0f, 100f)
+        audioEngine.harmonicDrivePercent = clamped
+        _uiState.update { it.copy(harmonicDrivePercent = clamped) }
+    }
+
+    fun toggleFletcherMunson(enabled: Boolean) {
+        audioEngine.fletcherMunsonEnabled = enabled
+        _uiState.update { it.copy(fletcherMunsonEnabled = enabled) }
+    }
+
+    fun toggleReverbFreeze() {
+        val next = !_uiState.value.reverbFreezeEnabled
+        audioEngine.reverbFreezeEnabled = next
+        _uiState.update { it.copy(reverbFreezeEnabled = next) }
+    }
+
+    fun setDawExportDialogOpen(open: Boolean) {
+        _uiState.update { it.copy(showDawExportDialog = open) }
+    }
+
+    fun setTestToneMode(mode: TestToneMode) {
+        audioEngine.testToneMode = mode
+        _uiState.update { it.copy(testToneMode = mode) }
+    }
+
+    fun setTestToneLevelDb(levelDb: Float) {
+        val clamped = levelDb.coerceIn(-36f, 0f)
+        audioEngine.testToneLevelDb = clamped
+        _uiState.update { it.copy(testToneLevelDb = clamped) }
+    }
+
+    fun setSubCutFilter(filter: SubCutFilter) {
+        audioEngine.subCutFilter = filter
+        _uiState.update { it.copy(subCutFilter = filter) }
+    }
+
+    fun setDeEsserEnabled(enabled: Boolean) {
+        audioEngine.deEsserEnabled = enabled
+        _uiState.update { it.copy(deEsserEnabled = enabled) }
+    }
+
+    fun setDeEsserThresholdDb(thresholdDb: Float) {
+        val clamped = thresholdDb.coerceIn(-36f, -6f)
+        audioEngine.deEsserThresholdDb = clamped
+        _uiState.update { it.copy(deEsserThresholdDb = clamped) }
+    }
+
+    fun setDeEsserMaxReductionDb(maxReductionDb: Float) {
+        val clamped = maxReductionDb.coerceIn(1f, 18f)
+        audioEngine.deEsserMaxReductionDb = clamped
+        _uiState.update { it.copy(deEsserMaxReductionDb = clamped) }
+    }
+
+    fun setGainMatchedAB(enabled: Boolean) {
+        audioEngine.gainMatchedAB = enabled
+        _uiState.update { it.copy(gainMatchedABEnabled = enabled) }
+    }
+
+    fun setStreamingTarget(target: StreamingTarget) {
+        audioEngine.streamingTarget = target
+        _uiState.update { it.copy(streamingTarget = target) }
+    }
+
+    fun setStereoBalanceTrimDb(trimDb: Float) {
+        val clamped = trimDb.coerceIn(-6f, 6f)
+        audioEngine.stereoBalanceTrimDb = clamped
+        _uiState.update { it.copy(stereoBalanceTrimDb = clamped) }
+    }
+
+    fun setInvertLeftPolarity(invert: Boolean) {
+        audioEngine.invertLeftPolarity = invert
+        _uiState.update { it.copy(invertLeftPolarity = invert) }
+    }
+
+    fun setInvertRightPolarity(invert: Boolean) {
+        audioEngine.invertRightPolarity = invert
+        _uiState.update { it.copy(invertRightPolarity = invert) }
+    }
+
     fun toggleLofiMode() {
         val current = _uiState.value
         val turnOn = !current.isLofiMode
@@ -1254,11 +1472,14 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     fun exportCurrentPresetJson(): String {
         val s = _uiState.value
         val json = JSONObject().apply {
-            put("version", 1)
-            put("name", "Custom Preset")
+            put("version", 2)
+            put("name", "Custom Studio Preset")
             val eqObj = JSONObject()
             s.eqGains.forEach { (band, gain) -> eqObj.put(band.name, gain) }
             put("eqGains", eqObj)
+            val paramObj = JSONObject()
+            s.parametricBands.forEach { b -> paramObj.put(b.hz.toString(), b.gainDb) }
+            put("parametricGains", paramObj)
             put("spacePercent", s.spacePercent)
             put("punchPercent", s.punchPercent)
             put("clarityMacroPercent", s.clarityMacroPercent)
@@ -1273,6 +1494,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             put("reverbWetPercent", s.reverbWetPercent)
             put("reverbRoomSizePercent", s.reverbRoomSizePercent)
             put("reverbDampingPercent", s.reverbDampingPercent)
+            put("reverbFreezeEnabled", s.reverbFreezeEnabled)
             put("echoTimeMs", s.echoTimeMs)
             put("echoFeedbackPercent", s.echoFeedbackPercent)
             put("echoWetPercent", s.echoWetPercent)
@@ -1281,8 +1503,142 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             put("playbackSpeed", s.playbackSpeed)
             put("varispeedMode", s.varispeedMode)
             put("isLofiMode", s.isLofiMode)
+            put("midSideMode", s.midSideMode.name)
+            put("bassMonoMakerEnabled", s.bassMonoMakerEnabled)
+            put("referenceMonitor", s.referenceMonitor.name)
+            put("limiterMode", s.limiterMode.name)
+            put("tapeDrivePercent", s.tapeDrivePercent)
+            put("transientAttackPercent", s.transientAttackPercent)
+            put("transientSustainPercent", s.transientSustainPercent)
+            put("harmonicSaturationType", s.harmonicSaturationType.name)
+            put("harmonicDrivePercent", s.harmonicDrivePercent)
+            put("fletcherMunsonEnabled", s.fletcherMunsonEnabled)
         }
         return json.toString(2)
+    }
+
+    /**
+     * Generates a comprehensive, human-readable DAW Studio Reference Sheet.
+     * Mixing and mastering engineers can directly copy or download this specification to recreate
+     * the exact acoustic calibration curves in FabFilter Pro-Q, Pro-C, Pro-R, Logic, Ableton, or Pro Tools.
+     */
+    fun exportDawReferenceSheet(): String {
+        val s = _uiState.value
+        val sb = StringBuilder()
+        sb.appendLine("=========================================================")
+        sb.appendLine("      DAYDREAM AUDIO — PRO STUDIO REFERENCE SHEET        ")
+        sb.appendLine("=========================================================")
+        sb.appendLine("Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date())}")
+        sb.appendLine("Monitoring Bench:      ${s.referenceMonitor.label} (${s.referenceMonitor.subtitle})")
+        sb.appendLine("Mid/Side Audition:     ${s.midSideMode.label}")
+        sb.appendLine("Bass Mono-Maker (<120Hz): ${if (s.bassMonoMakerEnabled) "ENGAGED" else "BYPASSED"}")
+        sb.appendLine("ISO 226 Calibration:   ${if (s.fletcherMunsonEnabled) "ENGAGED (+4.5dB @ 85Hz, +2.5dB @ 8.5kHz)" else "BYPASSED (Linear)"}")
+        sb.appendLine("Console Tape/Tube Drive: +${String.format(java.util.Locale.US, "%.1f", s.tapeDrivePercent * 0.18f)} dB (${s.tapeDrivePercent.toInt()}%)")
+        sb.appendLine("Mastering Limiter:     ${s.limiterMode.label} (Ceiling: ${s.limiterCeilingDb} dBFS)")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("1. 10-BAND PARAMETRIC EQ (FabFilter Pro-Q3 / Logic / DAW)")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine(String.format(java.util.Locale.US, "%-8s | %-10s | %-8s | %s", "BAND", "FREQUENCY", "GAIN", "Q FACTOR / ANCHOR"))
+        sb.appendLine("---------|------------|----------|-----------------------")
+        s.parametricBands.forEach { b ->
+            val sign = if (b.gainDb >= 0) "+" else ""
+            sb.appendLine(String.format(java.util.Locale.US, "%-8s | %6d Hz  | %s%5.1f dB | Q = %.2f (%s)",
+                "${b.hz}Hz", b.hz, sign, b.gainDb, b.q, b.anchorLabel))
+        }
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("2. DYNAMICS COMPRESSOR (FabFilter Pro-C2 / SSL G-Master)")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Threshold:     ${String.format(java.util.Locale.US, "%.1f", s.compThresholdDb)} dBFS")
+        sb.appendLine("  • Ratio:         ${String.format(java.util.Locale.US, "%.1f:1", s.compRatio)}")
+        sb.appendLine("  • Attack Time:   ${String.format(java.util.Locale.US, "%.1f", s.compAttackMs)} ms")
+        sb.appendLine("  • Release Time:  ${String.format(java.util.Locale.US, "%.1f", s.compReleaseMs)} ms")
+        sb.appendLine("  • Auto Makeup:   +${String.format(java.util.Locale.US, "%.1f", -s.compThresholdDb * 0.35f)} dB")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("3. DYNAMIC TRANSIENT DESIGNER (SPL / Oxford TransMod)")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Attack Sculpt: ${if (s.transientAttackPercent >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", (s.transientAttackPercent / 100f) * 12f)} dB (${s.transientAttackPercent.toInt()}%)")
+        sb.appendLine("  • Sustain Tail:  ${if (s.transientSustainPercent >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", (s.transientSustainPercent / 100f) * 12f)} dB (${s.transientSustainPercent.toInt()}%)")
+        sb.appendLine("  • Time Constants: τ_fast 1.5ms, τ_slow 25ms, τ_sustain 180ms")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("4. ANALOG HARMONIC COLORATION & SATURATION")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Topology:      ${s.harmonicSaturationType.label} (${s.harmonicSaturationType.order})")
+        sb.appendLine("  • Drive:         +${String.format(java.util.Locale.US, "%.1f", (s.harmonicDrivePercent / 100f) * 15f)} dB (${s.harmonicDrivePercent.toInt()}%)")
+        sb.appendLine("  • Measured THD:  ${String.format(java.util.Locale.US, "%.2f", s.thdPercent)}%")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("5. ATMOSPHERIC REVERB (FabFilter Pro-R / Valhalla Room)")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Room Space:    ${s.roomSize.label} (${s.wallMaterial.label})")
+        sb.appendLine("  • Wet Mix:       ${s.reverbWetPercent.toInt()}% (Equal-power blend)")
+        sb.appendLine("  • Room Size:     ${s.reverbRoomSizePercent.toInt()}% (Continuous RT60)")
+        sb.appendLine("  • HF Damping:    ${s.reverbDampingPercent.toInt()}%")
+        sb.appendLine("  • Reverb Freeze: ${if (s.reverbFreezeEnabled) "LOCKED (Infinite Ambient Hold)" else "Normal Exponential Decay"}")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("6. ANALOG TAPE DELAY / ECHO (Space Echo / EchoBoy)")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Delay Time:    ${s.echoTimeMs} ms")
+        sb.appendLine("  • Feedback:      ${s.echoFeedbackPercent.toInt()}%")
+        sb.appendLine("  • Wet Mix:       ${s.echoWetPercent.toInt()}% (Punchy direct crossfade)")
+        sb.appendLine("  • Topology:      Stereo Ping-Pong with Tape Saturation Feedback")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("7. MASTERING SUB-CUT & DE-ESSER")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Infrasonic Sub-Cut:   ${s.subCutFilter.label} (${s.subCutFilter.slope})")
+        sb.appendLine("  • Dynamic De-Esser:     ${if (s.deEsserEnabled) "ENGAGED" else "BYPASSED"}")
+        if (s.deEsserEnabled) {
+            sb.appendLine("    - Sidechain Band:     6.5 kHz (Bell, Q=2.2)")
+            sb.appendLine("    - Threshold:          ${String.format(java.util.Locale.US, "%.1f", s.deEsserThresholdDb)} dBFS")
+            sb.appendLine("    - Max Attenuation:    ${String.format(java.util.Locale.US, "%.1f", s.deEsserMaxReductionDb)} dB")
+            sb.appendLine("    - Live Gain Reduction: -${String.format(java.util.Locale.US, "%.1f", s.deEsserReductionDb)} dB")
+        }
+        sb.appendLine("  • Stereo Balance Trim:  ${if (s.stereoBalanceTrimDb >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", s.stereoBalanceTrimDb)} dB")
+        sb.appendLine("  • Channel Polarity:     Left Ø = ${if (s.invertLeftPolarity) "INVERTED (180°)" else "NORMAL"}, Right Ø = ${if (s.invertRightPolarity) "INVERTED (180°)" else "NORMAL"}")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("6. BROADCAST LOUDNESS & STREAMING (ITU-R BS.1770-4 / EBU R128)")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Target Standard:      ${s.streamingTarget.platform} (${s.streamingTarget.targetLufs} LUFS, TP: ${s.streamingTarget.maxTruePeakDbtp} dBTP)")
+        sb.appendLine("  • Integrated Loudness:  ${String.format(java.util.Locale.US, "%.1f", s.lufsMetrics.integratedLufs)} LUFS (Target Delta: ${String.format(java.util.Locale.US, "%+.1f", s.lufsMetrics.integratedLufs - s.streamingTarget.targetLufs)} LU)")
+        sb.appendLine("  • Short-Term (3s):      ${String.format(java.util.Locale.US, "%.1f", s.lufsMetrics.shortTermLufs)} LUFS")
+        sb.appendLine("  • Momentary (400ms):    ${String.format(java.util.Locale.US, "%.1f", s.lufsMetrics.momentaryLufs)} LUFS")
+        sb.appendLine("  • Loudness Range (LRA): ${String.format(java.util.Locale.US, "%.1f", s.lufsMetrics.loudnessRangeLu)} LU")
+        sb.appendLine("  • 4x True Peak (dBTP):  ${String.format(java.util.Locale.US, "%.1f", s.lufsMetrics.truePeakDbtp)} dBTP")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("7. MEASURED REFERENCE METRICS")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Phase Correlation:    ${String.format(java.util.Locale.US, "%.2f", s.phaseCorrelation)} (-1.0 to +1.0)")
+        sb.appendLine("  • Crest Factor (DR):    ${String.format(java.util.Locale.US, "%.1f", s.crestFactorDb)} dB")
+        sb.appendLine("  • Peak dBFS:            ${String.format(java.util.Locale.US, "%.1f", s.peakDbfs)} dBFS")
+        sb.appendLine("  • RMS dBFS:             ${String.format(java.util.Locale.US, "%.1f", s.rmsDbfs)} dBFS")
+        sb.appendLine("=========================================================")
+        return sb.toString()
+    }
+
+    /**
+     * Saves the current preset or DAW calibration sheet to internal/external storage.
+     */
+    fun savePresetToFile(context: Context, isDawSheet: Boolean): String {
+        return try {
+            val content = if (isDawSheet) exportDawReferenceSheet() else exportCurrentPresetJson()
+            val extension = if (isDawSheet) "txt" else "json"
+            val fileName = "daydream_studio_reference_${System.currentTimeMillis()}.$extension"
+            val dir = context.getExternalFilesDir(null) ?: context.filesDir
+            val file = java.io.File(dir, fileName)
+            file.writeText(content)
+            _uiState.update { it.copy(notificationMessage = "Saved preset to ${file.name}") }
+            file.absolutePath
+        } catch (e: Exception) {
+            _uiState.update { it.copy(notificationMessage = "Failed to save file: ${e.message}") }
+            ""
+        }
     }
 
     fun importPresetJson(jsonString: String): Boolean {
@@ -1323,6 +1679,12 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val speed = json.optDouble("playbackSpeed", 1.0).toFloat()
             val varispeed = json.optBoolean("varispeedMode", true)
             val lofi = json.optBoolean("isLofiMode", false)
+            val midSide = runCatching { MidSideMode.valueOf(json.optString("midSideMode")) }.getOrDefault(MidSideMode.STEREO)
+            val bassMono = json.optBoolean("bassMonoMakerEnabled", false)
+            val refMon = runCatching { ReferenceMonitor.valueOf(json.optString("referenceMonitor")) }.getOrDefault(ReferenceMonitor.FLAT)
+            val limMode = runCatching { LimiterMode.valueOf(json.optString("limiterMode")) }.getOrDefault(LimiterMode.SOFT_BRICKWALL)
+            val tapeDrive = json.optDouble("tapeDrivePercent", 0.0).toFloat()
+            val revFreeze = json.optBoolean("reverbFreezeEnabled", false)
 
             audioEngine.eqGains.putAll(importedEq)
             systemEffects.updatePlainEqGains(importedEq)
@@ -1350,11 +1712,17 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             audioEngine.reverbWet = reverbWet
             audioEngine.reverbRoomSize = reverbRoom
             audioEngine.reverbDamping = reverbDamp
+            audioEngine.reverbFreezeEnabled = revFreeze
             audioEngine.echoTimeMs = echoTime
             audioEngine.echoFeedback = echoFeedback
             audioEngine.echoWet = echoWet
             audioEngine.roomSize = roomSizeValue
             audioEngine.wallMaterial = wallMaterialValue
+            audioEngine.midSideMode = midSide
+            audioEngine.bassMonoMakerEnabled = bassMono
+            audioEngine.referenceMonitor = refMon
+            audioEngine.limiterMode = limMode
+            audioEngine.tapeDrivePercent = tapeDrive
             systemEffects.updateReverb(
                 wetPercent = reverbWet,
                 roomSizePercent = reverbRoom,
@@ -1383,6 +1751,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     reverbWetPercent = reverbWet,
                     reverbRoomSizePercent = reverbRoom,
                     reverbDampingPercent = reverbDamp,
+                    reverbFreezeEnabled = revFreeze,
                     echoTimeMs = echoTime,
                     echoFeedbackPercent = echoFeedback,
                     echoWetPercent = echoWet,
@@ -1391,6 +1760,11 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     playbackSpeed = speed,
                     varispeedMode = varispeed,
                     isLofiMode = lofi,
+                    midSideMode = midSide,
+                    bassMonoMakerEnabled = bassMono,
+                    referenceMonitor = refMon,
+                    limiterMode = limMode,
+                    tapeDrivePercent = tapeDrive,
                     notificationMessage = "Preset imported successfully!"
                 )
             }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,16 +48,39 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
+import com.example.model.HarmonicSaturationType
+import com.example.model.LimiterMode
+import com.example.model.MidSideMode
+import com.example.model.ReferenceMonitor
 import com.example.model.SoundTargetPreset
+import com.example.model.StreamingTarget
+import com.example.model.SubCutFilter
+import com.example.model.TestToneMode
 import com.example.ui.components.ABCompareBar
+import com.example.ui.components.CrestFactorBadge
+import com.example.ui.components.DynamicDeEsserBadge
+import com.example.ui.components.FletcherMunsonBadge
+import com.example.ui.components.HarmonicSaturationCard
 import com.example.ui.components.IosRowSeparator
 import com.example.ui.components.IosSectionHeader
 import com.example.ui.components.IosSegmentedControl
 import com.example.ui.components.LedCompressionMeter
 import com.example.ui.components.LiquidSlider
+import com.example.ui.components.LissajousVectorScope
+import com.example.ui.components.LufsLoudnessMeter
+import com.example.ui.components.MasteringSubCutCard
 import com.example.ui.components.ParametricEqCurveVisualizer
+import com.example.ui.components.PhaseCorrelationMeter
 import com.example.ui.components.SoundTargetCarousel
 import com.example.ui.components.SpatialStageVisualizer
+import com.example.ui.components.StereoBalanceAndPolarityCard
+import com.example.ui.components.TestToneGeneratorCard
+import com.example.ui.components.TransientDesignerCard
 import com.example.ui.theme.GlassTokens
 import com.example.ui.theme.iosInsetGroupedCard
 import com.example.ui.theme.raisedGlass
@@ -68,7 +92,8 @@ import com.example.viewmodel.DaydreamViewModel
  * - 10-Band Independent Parametric EQ with individual Q (0.3 to 10.0) and gain (-12 to +12dB)
  * - True parametric dynamics controls: Threshold, Ratio, Attack, Release
  * - HRTF Profile selection
- * - Shareable Preset Export (FR-12)
+ * - Pro Studio Reference & Mastering Bench: Mid/Side matrix, Reference Monitor simulation, Tape Drive, Limiter Mode
+ * - Shareable Preset Export & DAW Reference Specification Sheet (FR-12)
  */
 @Composable
 fun AdvancedModeScreen(
@@ -76,6 +101,7 @@ fun AdvancedModeScreen(
     uiState: DaydreamUiState,
     paddingValues: PaddingValues
 ) {
+    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
     LazyColumn(
@@ -110,7 +136,9 @@ fun AdvancedModeScreen(
             ABCompareBar(
                 isBypassed = uiState.isBypassed,
                 onToggle = { viewModel.toggleBypassAB() },
-                reduceGlass = uiState.reduceGlass
+                reduceGlass = uiState.reduceGlass,
+                gainMatchedAB = uiState.gainMatchedABEnabled,
+                onToggleGainMatched = { viewModel.setGainMatchedAB(!uiState.gainMatchedABEnabled) }
             )
         }
 
@@ -444,7 +472,7 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setReverbWet(it) },
                         valueRange = 0f..100f,
                         unit = "%",
-                        technicalValue = "Wet/Dry Blend (up to 2.6x wet gain)",
+                        technicalValue = "Equal-Power Blend (100% wet removes dry)",
                         showTechnical = true,
                         accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
@@ -458,7 +486,7 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setReverbRoomSize(it) },
                         valueRange = 10f..100f,
                         unit = "%",
-                        technicalValue = "Comb Feedback 0.35..0.985",
+                        technicalValue = "Comb Feedback 0.40..0.988",
                         showTechnical = true,
                         accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
@@ -472,11 +500,45 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setReverbDamping(it) },
                         valueRange = 5f..100f,
                         unit = "%",
-                        technicalValue = "Absorption Coeff",
+                        technicalValue = "High-Cut Absorption Coeff",
                         showTechnical = true,
                         accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "Reverb Freeze (Infinite Tail)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = if (uiState.reverbFreezeEnabled) {
+                                    "Comb feedback locked at 0.999 — audio is held in an infinite ambient wash."
+                                } else {
+                                    "Standard decay based on Room Size & Damping."
+                                },
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = uiState.reverbFreezeEnabled,
+                            onCheckedChange = { viewModel.toggleReverbFreeze() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = GlassTokens.IosIndigo
+                            )
+                        )
+                    }
 
                     IosRowSeparator(modifier = Modifier.padding(vertical = 10.dp))
 
@@ -487,7 +549,7 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setEchoWet(it) },
                         valueRange = 0f..100f,
                         unit = "%",
-                        technicalValue = "Delay Tap Output",
+                        technicalValue = "Analog Tape Output Blend",
                         showTechnical = true,
                         accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
@@ -515,7 +577,7 @@ fun AdvancedModeScreen(
                         onValueChange = { viewModel.setEchoFeedback(it) },
                         valueRange = 0f..96f,
                         unit = "%",
-                        technicalValue = "Crossfeed Loop Gain",
+                        technicalValue = "Tape Saturation Feedback Loop (up to 96%)",
                         showTechnical = true,
                         accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
@@ -582,11 +644,380 @@ fun AdvancedModeScreen(
             }
         }
 
+        // Pro Studio Reference & Mastering Bench (Apple Inset Grouped Section)
+        item {
+            IosSectionHeader(
+                title = "Studio Reference & Mastering Bench",
+                subtitle = "Mid/Side audition matrix, monitor acoustic profiles & loudness mastering"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .iosInsetGroupedCard(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    // Real-Time Broadcast Loudness Suite (ITU-R BS.1770-4 & EBU R128)
+                    LufsLoudnessMeter(
+                        metrics = uiState.lufsMetrics,
+                        currentTarget = uiState.streamingTarget,
+                        onSelectTarget = { viewModel.setStreamingTarget(it) },
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Real-Time Studio Meters
+                    PhaseCorrelationMeter(correlation = uiState.phaseCorrelation)
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Real-Time 2D Phosphor Lissajous Goniometer & Vector Scope
+                    LissajousVectorScope(
+                        points = uiState.vectorScopePoints,
+                        phaseCorrelation = uiState.phaseCorrelation,
+                        reduceGlass = uiState.reduceGlass,
+                        reduceMotion = uiState.reduceMotion
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    CrestFactorBadge(
+                        crestFactorDb = uiState.crestFactorDb,
+                        peakDbfs = uiState.peakDbfs,
+                        rmsDbfs = uiState.rmsDbfs
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Mid / Side Audition Matrix
+                    Text(
+                        text = "MID / SIDE AUDITION MATRIX",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    Text(
+                        text = "Isolate phantom center (kick, snare, lead vocals) or stereo side ambience to check mix translation outside the studio.",
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    val midSideModes = listOf(
+                        MidSideMode.STEREO to "Stereo",
+                        MidSideMode.MONO_SUM to "Mono",
+                        MidSideMode.MID_ONLY to "Mid",
+                        MidSideMode.SIDE_ONLY to "Side",
+                        MidSideMode.PHASE_INVERT to "Ø Invert"
+                    )
+                    val selectedMsIndex = midSideModes.indexOfFirst { it.first == uiState.midSideMode }.let { if (it >= 0) it else 0 }
+
+                    IosSegmentedControl(
+                        items = midSideModes,
+                        selectedIndex = selectedMsIndex,
+                        onSelect = { viewModel.setMidSideMode(midSideModes[it].first) },
+                        label = { it.second }
+                    )
+
+                    if (uiState.midSideMode != MidSideMode.STEREO) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(GlassTokens.radiusSm)
+                                .background(GlassTokens.IosOrange.copy(alpha = 0.15f))
+                                .border(0.8.dp, GlassTokens.IosOrange.copy(alpha = 0.40f), GlassTokens.radiusSm)
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = GlassTokens.IosOrange, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "AUDITION ACTIVE: ${uiState.midSideMode.displayName}. Tap 'Stereo' when finished.",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = GlassTokens.IosOrange
+                                )
+                            }
+                        }
+                    }
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Reference Monitor Simulation
+                    Text(
+                        text = "REFERENCE MONITOR SIMULATION",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    Text(
+                        text = "Emulate classic studio mixing monitors, car sound systems & consumer devices:",
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ReferenceMonitor.entries.forEach { monitor ->
+                            val isSelected = uiState.referenceMonitor == monitor
+                            val monitorLabel = when (monitor) {
+                                ReferenceMonitor.FLAT -> "Flat Studio"
+                                ReferenceMonitor.NS10M -> "Yamaha NS-10M"
+                                ReferenceMonitor.AURATONE_5C -> "Auratone 5C"
+                                ReferenceMonitor.CAR_TEST -> "Car Test"
+                                ReferenceMonitor.AIRPODS_PRO -> "AirPods Pro"
+                                ReferenceMonitor.PHONE_SPEAKER -> "Phone Speaker"
+                                ReferenceMonitor.CLUB_SYSTEM -> "Club PA"
+                                ReferenceMonitor.MACBOOK_PRO -> "MacBook Pro"
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(GlassTokens.radiusPill)
+                                    .background(if (isSelected) GlassTokens.IosTeal else GlassTokens.IosGroupedSecondary)
+                                    .border(
+                                        0.8.dp,
+                                        if (isSelected) GlassTokens.IosTeal else GlassTokens.IosSeparator,
+                                        GlassTokens.radiusPill
+                                    )
+                                    .clickable { viewModel.setReferenceMonitor(monitor) }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    text = monitorLabel,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.Black else GlassTokens.TextPrimary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(GlassTokens.radiusSm)
+                            .background(Color(0xFF141416))
+                            .border(0.6.dp, GlassTokens.IosSeparator, GlassTokens.radiusSm)
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "${uiState.referenceMonitor.label} • ${uiState.referenceMonitor.subtitle}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTokens.IosTeal
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = uiState.referenceMonitor.description,
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // ISO 226 Fletcher-Munson Equal-Loudness Calibration
+                    FletcherMunsonBadge(
+                        enabled = uiState.fletcherMunsonEnabled,
+                        onToggle = { viewModel.toggleFletcherMunson(it) }
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Dynamic Transient Designer (SPL & Oxford TransMod)
+                    TransientDesignerCard(
+                        attackPercent = uiState.transientAttackPercent,
+                        sustainPercent = uiState.transientSustainPercent,
+                        attackActivity = uiState.transientAttackActivity,
+                        sustainActivity = uiState.transientSustainActivity,
+                        onAttackChange = { viewModel.setTransientAttackPercent(it) },
+                        onSustainChange = { viewModel.setTransientSustainPercent(it) },
+                        onReset = {
+                            viewModel.setTransientAttackPercent(0f)
+                            viewModel.setTransientSustainPercent(0f)
+                        },
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Analog Harmonic Coloration & THD Analyzer
+                    HarmonicSaturationCard(
+                        selectedType = uiState.harmonicSaturationType,
+                        drivePercent = uiState.harmonicDrivePercent,
+                        thdPercent = uiState.thdPercent,
+                        onTypeChange = { viewModel.setHarmonicSaturationType(it) },
+                        onDriveChange = { viewModel.setHarmonicDrivePercent(it) },
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 8.dp))
+
+                    // Bass Mono-Maker (<120Hz)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "Bass Mono-Maker (<120Hz)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = "Collapses sub frequencies below 120Hz into pure mono. Eliminates low-end phase cancellations for club subwoofers and vinyl master compatibility.",
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = uiState.bassMonoMakerEnabled,
+                            onCheckedChange = { viewModel.setBassMonoMaker(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = GlassTokens.IosTeal
+                            )
+                        )
+                    }
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 10.dp))
+
+                    // Limiter Ceiling Architecture
+                    Text(
+                        text = "LIMITER CEILING ARCHITECTURE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    Text(
+                        text = if (uiState.limiterMode == LimiterMode.SOFT_BRICKWALL) {
+                            "Soft Brickwall: Transparent 2.5ms lookahead limiter prevents inter-sample clipping."
+                        } else {
+                            "Hard Clipper: Zero-latency hard clipper retains sharp drum transient impact for modern punch."
+                        },
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    val limiterModes = listOf(
+                        LimiterMode.SOFT_BRICKWALL to "Soft Brickwall",
+                        LimiterMode.HARD_CLIPPER to "Hard Clipper"
+                    )
+                    val selectedLimiterIndex = if (uiState.limiterMode == LimiterMode.SOFT_BRICKWALL) 0 else 1
+
+                    IosSegmentedControl(
+                        items = limiterModes,
+                        selectedIndex = selectedLimiterIndex,
+                        onSelect = { viewModel.setLimiterMode(limiterModes[it].first) },
+                        label = { it.second }
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Mastering Sub-Cut Filter
+                    MasteringSubCutCard(
+                        currentFilter = uiState.subCutFilter,
+                        onSelectFilter = { viewModel.setSubCutFilter(it) },
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Dynamic Frequency De-Esser
+                    DynamicDeEsserBadge(
+                        enabled = uiState.deEsserEnabled,
+                        onToggleEnabled = { viewModel.setDeEsserEnabled(it) },
+                        thresholdDb = uiState.deEsserThresholdDb,
+                        onThresholdChange = { viewModel.setDeEsserThresholdDb(it) },
+                        maxReductionDb = uiState.deEsserMaxReductionDb,
+                        onMaxReductionChange = { viewModel.setDeEsserMaxReductionDb(it) },
+                        currentReductionDb = uiState.deEsserReductionDb,
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Stereo Balance Trim & Channel Polarity (Ø L, Ø R)
+                    StereoBalanceAndPolarityCard(
+                        balanceTrimDb = uiState.stereoBalanceTrimDb,
+                        onBalanceTrimChange = { viewModel.setStereoBalanceTrimDb(it) },
+                        invertLeftPolarity = uiState.invertLeftPolarity,
+                        onToggleInvertLeft = { viewModel.setInvertLeftPolarity(it) },
+                        invertRightPolarity = uiState.invertRightPolarity,
+                        onToggleInvertRight = { viewModel.setInvertRightPolarity(it) },
+                        reduceGlass = uiState.reduceGlass
+                    )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // DAW Reference Sheet CTA
+                    Button(
+                        onClick = { viewModel.setDawExportDialogOpen(true) },
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
+                        shape = GlassTokens.radiusPill,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Export DAW Specification Sheet",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+
+        // Studio Calibration & Test Tone Generator Section
+        item {
+            IosSectionHeader(
+                title = "Acoustic Calibration & Test Tones",
+                subtitle = "Hardware alignment synthesizer: Pink Noise, 1kHz calibration tone & sweeps"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            TestToneGeneratorCard(
+                currentMode = uiState.testToneMode,
+                onSelectMode = { viewModel.setTestToneMode(it) },
+                levelDb = uiState.testToneLevelDb,
+                onLevelChange = { viewModel.setTestToneLevelDb(it) },
+                reduceGlass = uiState.reduceGlass
+            )
+        }
+
         // Preset Export / Import (Apple Inset Grouped Section)
         item {
             IosSectionHeader(
-                title = "Preset Management",
-                subtitle = "Share and import complete 6-stage chain presets as JSON"
+                title = "Preset & DAW Integration",
+                subtitle = "Export DAW studio spec sheets or share JSON chain presets"
             )
             Spacer(modifier = Modifier.height(6.dp))
             Box(
@@ -604,19 +1035,21 @@ fun AdvancedModeScreen(
                             onClick = {
                                 val json = viewModel.exportCurrentPresetJson()
                                 clipboardManager.setText(AnnotatedString(json))
+                                Toast.makeText(context, "JSON preset copied to clipboard", Toast.LENGTH_SHORT).show()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosSeparator),
                             shape = GlassTokens.radiusPill,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ContentCopy,
                                 contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                tint = GlassTokens.IosTeal,
+                                modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export JSON", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Text("Copy JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosTeal)
                         }
 
                         Button(
@@ -630,10 +1063,10 @@ fun AdvancedModeScreen(
                                 imageVector = Icons.Default.FileDownload,
                                 contentDescription = null,
                                 tint = GlassTokens.IosBlue,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Import JSON", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosBlue)
+                            Text("Import JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosBlue)
                         }
                     }
                 }
@@ -653,7 +1086,6 @@ fun AdvancedModeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Apple Modal Sheet Grabber
                     Box(
                         modifier = Modifier
                             .width(36.dp)
@@ -745,6 +1177,7 @@ fun AdvancedModeScreen(
                         val success = viewModel.importPresetJson(jsonInput)
                         if (success) {
                             viewModel.closeImportPresetDialog()
+                            Toast.makeText(context, "Preset imported successfully!", Toast.LENGTH_SHORT).show()
                         } else {
                             importError = "Invalid preset format. Check JSON syntax."
                         }
@@ -761,6 +1194,145 @@ fun AdvancedModeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
                 ) {
                     Text("Cancel", color = GlassTokens.TextSecondary)
+                }
+            },
+            containerColor = GlassTokens.IosGroupedPrimary,
+            shape = GlassTokens.radiusXl
+        )
+    }
+
+    // Pro Studio DAW Specification & Preset Export Dialog Modal (Apple HIG Sheet)
+    if (uiState.showDawExportDialog) {
+        var selectedFormatTab by remember { mutableStateOf(0) } // 0 = DAW Spec Sheet, 1 = JSON Preset
+        val dawSheetText = remember(uiState) { viewModel.exportDawReferenceSheet() }
+        val jsonPresetText = remember(uiState) { viewModel.exportCurrentPresetJson() }
+        val displayedContent = if (selectedFormatTab == 0) dawSheetText else jsonPresetText
+
+        AlertDialog(
+            onDismissRequest = { viewModel.setDawExportDialogOpen(false) },
+            title = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(5.dp)
+                            .clip(GlassTokens.radiusPill)
+                            .background(Color(0xFF5A5A5E))
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Studio Chain Export",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GlassTokens.TextPrimary
+                        )
+                        IconButton(onClick = { viewModel.setDawExportDialogOpen(false) }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = GlassTokens.TextSecondary)
+                        }
+                    }
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Transfer your mobile tuning directly into your desktop DAW plugins (FabFilter, Logic, Ableton) or backup as JSON:",
+                        fontSize = 12.sp,
+                        color = GlassTokens.TextSecondary,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+
+                    IosSegmentedControl(
+                        items = listOf("DAW Spec Sheet", "JSON Preset"),
+                        selectedIndex = selectedFormatTab,
+                        onSelect = { selectedFormatTab = it },
+                        label = { it }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(GlassTokens.radiusSm)
+                            .background(Color(0xFF141416))
+                            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusSm)
+                            .padding(10.dp)
+                    ) {
+                        val scrollState = rememberScrollState()
+                        Text(
+                            text = displayedContent,
+                            fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = GlassTokens.TextPrimary,
+                            lineHeight = 15.sp,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(displayedContent))
+                                Toast.makeText(
+                                    context,
+                                    if (selectedFormatTab == 0) "DAW Spec copied to clipboard!" else "JSON preset copied to clipboard!",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosBlue),
+                            shape = GlassTokens.radiusPill,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        }
+
+                        Button(
+                            onClick = {
+                                val savedFile = viewModel.savePresetToFile(context, isDawSheet = (selectedFormatTab == 0))
+                                if (savedFile != null) {
+                                    Toast.makeText(context, "Saved to Downloads: ${savedFile.name}", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Could not write to Downloads", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, GlassTokens.IosSeparator),
+                            shape = GlassTokens.radiusPill,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null, tint = GlassTokens.IosTeal, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save File", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosTeal)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.setDawExportDialogOpen(false) },
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosGroupedSecondary),
+                    shape = GlassTokens.radiusPill
+                ) {
+                    Text("Done", color = GlassTokens.TextPrimary, fontWeight = FontWeight.SemiBold)
                 }
             },
             containerColor = GlassTokens.IosGroupedPrimary,

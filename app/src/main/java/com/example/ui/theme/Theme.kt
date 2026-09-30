@@ -19,6 +19,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -52,6 +53,7 @@ object GlassTokens {
     val IosTeal = Color(0xFF64D2FF)       // Apple System Teal / Cyan (air/detail)
     val IosIndigo = Color(0xFF5E5CE6)     // Apple System Indigo (presence/space)
     val IosPurple = Color(0xFFBF5AF2)     // Apple System Purple (ambience)
+    val IosYellow = Color(0xFFFFD60A)     // Apple System Yellow (meters/warning)
     val IosPink = Color(0xFFFF375F)       // Apple System Pink
 
     // Backward compatibility aliases
@@ -116,7 +118,7 @@ data class GlassStyleConfig(
 
 val LocalGlassConfig = staticCompositionLocalOf { GlassStyleConfig() }
 
-// Modifier Extensions for Apple iOS Surfaces
+// Modifier Extensions for Apple iOS Surfaces (Liquid Glass Material Spec)
 fun Modifier.baseGlass(reduceGlass: Boolean = false): Modifier {
     return if (reduceGlass) {
         this.clip(GlassTokens.radiusLg)
@@ -127,18 +129,23 @@ fun Modifier.baseGlass(reduceGlass: Boolean = false): Modifier {
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFF222226).copy(alpha = 0.92f),
-                        Color(0xFF18181A).copy(alpha = 0.95f)
+                        Color(0xFF262A36).copy(alpha = 0.88f),
+                        Color(0xFF171922).copy(alpha = 0.93f),
+                        Color(0xFF0F1016).copy(alpha = 0.96f)
                     )
                 )
             )
             .border(
                 1.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.14f),
-                        Color.White.copy(alpha = 0.05f)
-                    )
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.04f),
+                        Color.White.copy(alpha = 0.18f)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(300f, 300f)
                 ),
                 GlassTokens.radiusLg
             )
@@ -155,18 +162,23 @@ fun Modifier.raisedGlass(reduceGlass: Boolean = false): Modifier {
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFF26262A).copy(alpha = 0.90f),
-                        Color(0xFF1C1C1E).copy(alpha = 0.94f)
+                        Color(0xFF2D3242).copy(alpha = 0.89f),
+                        Color(0xFF1E212D).copy(alpha = 0.93f),
+                        Color(0xFF13151D).copy(alpha = 0.96f)
                     )
                 )
             )
             .border(
                 1.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.18f),
-                        Color.White.copy(alpha = 0.06f)
-                    )
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.38f),
+                        Color.White.copy(alpha = 0.14f),
+                        Color.White.copy(alpha = 0.05f),
+                        Color.White.copy(alpha = 0.22f)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(350f, 350f)
                 ),
                 GlassTokens.radiusLg
             )
@@ -183,25 +195,30 @@ fun Modifier.floatingGlass(reduceGlass: Boolean = false): Modifier {
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFF2A2A2E).copy(alpha = 0.92f),
-                        Color(0xFF1E1E20).copy(alpha = 0.96f)
+                        Color(0xFF32384A).copy(alpha = 0.90f),
+                        Color(0xFF222634).copy(alpha = 0.94f),
+                        Color(0xFF14161F).copy(alpha = 0.97f)
                     )
                 )
             )
             .border(
-                1.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.25f),
-                        Color.White.copy(alpha = 0.08f)
-                    )
+                1.2.dp,
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.45f),
+                        Color.White.copy(alpha = 0.18f),
+                        Color.White.copy(alpha = 0.06f),
+                        Color.White.copy(alpha = 0.28f)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(400f, 400f)
                 ),
                 GlassTokens.radiusXl
             )
     }
 }
 
-// Authentic Apple iOS Inset Grouped Container Modifier
+// Authentic Apple iOS Inset Grouped Container Modifier (Liquid Glass Material)
 fun Modifier.iosInsetGroupedCard(reduceGlass: Boolean = false): Modifier {
     return if (reduceGlass) {
         this.clip(GlassTokens.radiusLg)
@@ -212,18 +229,23 @@ fun Modifier.iosInsetGroupedCard(reduceGlass: Boolean = false): Modifier {
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFF222225).copy(alpha = 0.88f),
-                        Color(0xFF1A1A1C).copy(alpha = 0.94f)
+                        Color(0xFF262A38).copy(alpha = 0.86f),
+                        Color(0xFF191B24).copy(alpha = 0.92f),
+                        Color(0xFF111218).copy(alpha = 0.96f)
                     )
                 )
             )
             .border(
-                0.8.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.16f),
-                        Color.White.copy(alpha = 0.04f)
-                    )
+                0.9.dp,
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.10f),
+                        Color.White.copy(alpha = 0.04f),
+                        Color.White.copy(alpha = 0.16f)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(350f, 350f)
                 ),
                 GlassTokens.radiusLg
             )

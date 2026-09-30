@@ -326,3 +326,106 @@ data class LocalTrack(
         get() = formattedSize
 }
 
+/**
+ * Pro Studio Mid/Side Audition Mode
+ */
+enum class MidSideMode(val label: String, val shortLabel: String, val description: String) {
+    STEREO("Full Stereo", "Stereo", "Standard left/right stereo master playback"),
+    MONO_SUM("Mono Sum (L+R)", "Mono", "Sums channels to check phase cancellation and mono compatibility"),
+    MID_ONLY("Mid Only (Center)", "Mid", "Isolates phantom center (lead vocals, kick, snare, bass)"),
+    SIDE_ONLY("Sides Only (L-R)", "Side", "Mutes center; audits stereo width, panning & reverb tails"),
+    PHASE_INVERT("Phase Invert (Ø R)", "Ø Invert", "Flips right channel polarity 180° to expose phase issues");
+
+    val displayName: String get() = shortLabel
+}
+
+/**
+ * Studio Reference Monitor Simulation
+ */
+enum class ReferenceMonitor(val label: String, val subtitle: String, val description: String) {
+    FLAT("Flat Studio Master", "Linear Reference", "Direct high-fidelity transparent monitor path"),
+    NS10M("Yamaha NS-10M", "Mid-Forward Sealed Box", "Iconic 1.5kHz paper cone bump & 85Hz sealed rolloff: the ultimate mix balance reference"),
+    AURATONE_5C("Auratone 5C Soundcube", "250Hz–5.5kHz Bandpass", "Legendary mid-forward mix cube check for vocal & snare balance"),
+    CAR_TEST("Car Test Simulation", "Sub Bump + Cabin Reflection", "Scooped mids, resonant 65Hz cabin cavity, high sizzle, and driver crossfeed"),
+    AIRPODS_PRO("AirPods Pro Profile", "Harman Consumer Target", "In-ear acoustic target with sub-bass shelf boost and ear-canal resonance"),
+    PHONE_SPEAKER("Phone Speaker Check", "Highpass 450Hz + Harmonics", "Simulates smartphone speaker playback to verify bass translation"),
+    CLUB_SYSTEM("Club PA Subwoofer", "Deep Sub <45Hz + Rumble Cut", "Massive low-end impact test for club and festival sound systems"),
+    MACBOOK_PRO("MacBook Pro Speakers", "Highpass 160Hz + Virtual Bass", "Laptop micro-transducer simulation with upper-harmonic bass illusion")
+}
+
+/**
+ * Analog Harmonic Saturation Color Topology
+ */
+enum class HarmonicSaturationType(val label: String, val order: String, val description: String) {
+    CLEAN("Clean Linear", "Zero THD", "Bit-accurate, zero harmonic distortion pass-through"),
+    TUBE_TRIODE("Triode Class-A Tube", "2nd Harmonic (2f₀)", "Asymmetric even-order warmth; enriches vocals, bass, and acoustic guitars with musical body"),
+    TAPE_PENTODE("Analog Reel Tape", "3rd Harmonic (3f₀)", "Symmetric odd-order tape compression; rounds sharp transients and glues the drum bus"),
+    CONSOLE_TRANSFORMER("Console Iron Core", "Low-End Hysteresis", "Magnetic transformer saturation; fattens bass frequencies below 150Hz")
+}
+
+/**
+ * Mastering Limiter Topology
+ */
+enum class LimiterMode(val label: String, val description: String) {
+    SOFT_BRICKWALL("Soft-Knee Brickwall", "Transparent analog-modeled soft limiter preventing inter-sample peaks"),
+    HARD_CLIPPER("Hard True-Peak Clipper", "Aggressive modern mastering clipper for punchy transient retention")
+}
+
+/**
+ * Studio Calibration & Acoustic Test Tone Generator
+ */
+enum class TestToneMode(val label: String, val shortLabel: String, val description: String) {
+    OFF("Signal Generator Off", "Off", "Standard audio playback"),
+    PINK_NOISE("Pink Noise (1/f)", "Pink Noise", "Equal energy per octave for room acoustic analysis & headphone calibration"),
+    WHITE_NOISE("White Noise", "White Noise", "Flat power spectral density across the full 20Hz-20kHz audio band"),
+    SINE_1KHZ("1 kHz Sine Reference", "1 kHz Sine", "Pure 1000Hz reference tone aligned to -18 dBFS studio standard"),
+    SUB_50HZ("50 Hz Sub Bass Check", "50 Hz Sub", "Deep pure sub tone for subwoofer crossover & acoustic rattle checks"),
+    LOG_SWEEP("20Hz–20kHz Log Sweep", "Log Sweep", "Continuous logarithmic sine sweep to expose room nodes and distortion");
+
+    val displayName: String get() = shortLabel
+}
+
+/**
+ * Mastering Infrasonic Sub-Cut Filter (Butterworth High-Pass)
+ */
+enum class SubCutFilter(
+    val label: String,
+    val cutoffHz: Float,
+    val slope: String,
+    val description: String
+) {
+    OFF("Flat (Off)", 0f, "0 dB/oct", "Full DC-coupled sub-bass pass-through"),
+    CUT_20HZ("20 Hz Cut", 20f, "18 dB/oct", "Standard vinyl & infrasonic cutoff; cleans DC rumble"),
+    CUT_30HZ("30 Hz Master", 30f, "24 dB/oct", "Streaming standard; reclaims +2dB headroom without affecting musical bass"),
+    CUT_40HZ("40 Hz Tight", 40f, "24 dB/oct", "Aggressive low-end cleanup for high-SPL club systems and subwoofers")
+}
+
+/**
+ * Streaming Platform Loudness Targets (ITU-R BS.1770-4 / EBU R128)
+ */
+enum class StreamingTarget(
+    val platformName: String,
+    val targetLufs: Float,
+    val maxTruePeakDbtp: Float,
+    val description: String
+) {
+    SPOTIFY_14("Spotify", -14.0f, -1.0f, "Spotify standard loudness normalization (-14 LUFS, -1.0 dBTP)"),
+    APPLE_16("Apple Music", -16.0f, -1.0f, "Apple Digital Masters Sound Check standard (-16 LUFS, -1.0 dBTP)"),
+    YOUTUBE_14("YouTube", -14.0f, -1.0f, "YouTube audio volume normalization (-14 LUFS, -1.0 dBTP)"),
+    CLUB_8("Club / EDM", -8.0f, -0.3f, "High-energy commercial club and festival loudness target (-8 LUFS)"),
+    EBU_R128_23("Broadcast (EBU)", -23.0f, -1.0f, "European Broadcast Union television & podcast standard (-23 LUFS)");
+
+    val platform: String get() = platformName
+}
+
+/**
+ * Real-time ITU-R BS.1770-4 & EBU R128 Loudness Metrics
+ */
+data class LufsMetrics(
+    val momentaryLufs: Float = -24.0f, // 400ms gating window
+    val shortTermLufs: Float = -24.0f, // 3-second sliding window
+    val integratedLufs: Float = -24.0f, // Gated integrated loudness across track
+    val loudnessRangeLu: Float = 6.0f,  // Dynamic Loudness Range (LRA) in LU
+    val truePeakDbtp: Float = -6.0f    // 4x oversampled True Peak in dBTP
+)
+

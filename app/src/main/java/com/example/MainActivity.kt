@@ -291,7 +291,7 @@ class MainActivity : ComponentActivity() {
                                                 uiState.currentLocalTrack != null && uiState.isPlaying -> uiState.currentLocalTrack!!.title
                                                 uiState.currentTrack != null && uiState.isPlaying -> uiState.currentTrack!!.title
                                                 uiState.isExternalPlaybackActive -> (uiState.activeSystemSessions.firstOrNull()?.let { "Hooked: $it" } ?: "Live External Audio")
-                                                else -> "Daydream Audio"
+                                                else -> "Active Audio"
                                             }
 
                                             Text(

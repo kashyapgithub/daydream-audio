@@ -82,31 +82,15 @@ fun SimpleModeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)
     ) {
-        // Apple Large Title Header (SF Pro Display Bold, -0.02em tracking)
+        // Top Action Bar / Diagnostic Wizard Action
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp, bottom = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = "Daydream Audio",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlassTokens.TextPrimary,
-                        letterSpacing = (-0.6).sp
-                    )
-                    Text(
-                        text = "Sound the way you remember it",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = GlassTokens.TextSecondary
-                    )
-                }
-
                 // Apple System Blue Capsule Action
                 Button(
                     onClick = { viewModel.openWizardDialog() },
@@ -418,7 +402,8 @@ fun SimpleModeScreen(
                                                     fontSize = 12.sp,
                                                     color = GlassTokens.TextSecondary,
                                                     maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f, fill = false)
                                                 )
                                                 Text(
                                                     text = "•",
@@ -748,7 +733,7 @@ fun SimpleModeScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Mono Recording Detected",
                                 fontSize = 13.sp,
@@ -923,17 +908,21 @@ fun SimpleModeScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
                                     Text(
                                         text = "De-Hum",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (uiState.deHumEnabled) GlassTokens.IosBlue else GlassTokens.TextPrimary
+                                        color = if (uiState.deHumEnabled) GlassTokens.IosBlue else GlassTokens.TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "50/60Hz notch",
                                         fontSize = 11.sp,
-                                        color = GlassTokens.TextSecondary
+                                        color = GlassTokens.TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 Switch(
@@ -967,17 +956,21 @@ fun SimpleModeScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
                                     Text(
                                         text = "De-Crackle",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (uiState.deCrackleEnabled) GlassTokens.IosBlue else GlassTokens.TextPrimary
+                                        color = if (uiState.deCrackleEnabled) GlassTokens.IosBlue else GlassTokens.TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "Vinyl pops",
                                         fontSize = 11.sp,
-                                        color = GlassTokens.TextSecondary
+                                        color = GlassTokens.TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 Switch(
@@ -1185,7 +1178,7 @@ fun SimpleModeScreen(
                         onValueChange = { viewModel.setReverbWet(it) },
                         valueRange = 0f..100f,
                         unit = "%",
-                        technicalValue = "Freeverb 8-Comb + 4-Allpass",
+                        technicalValue = "Equal-Power Blend (100% wet removes dry)",
                         showTechnical = uiState.showTechnicalValues,
                         accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
@@ -1200,11 +1193,45 @@ fun SimpleModeScreen(
                         onValueChange = { viewModel.setReverbRoomSize(it) },
                         valueRange = 10f..100f,
                         unit = "%",
-                        technicalValue = "Comb Feedback Gain",
+                        technicalValue = "Comb Feedback Gain (0.40..0.988)",
                         showTechnical = uiState.showTechnicalValues,
                         accentColor = GlassTokens.IosIndigo,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "Reverb Freeze (Infinite Tail)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GlassTokens.TextPrimary
+                            )
+                            Text(
+                                text = if (uiState.reverbFreezeEnabled) {
+                                    "Comb feedback locked at 0.999 — audio is held in an infinite ambient wash."
+                                } else {
+                                    "Standard decay based on Room Size."
+                                },
+                                fontSize = 12.sp,
+                                color = GlassTokens.TextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = uiState.reverbFreezeEnabled,
+                            onCheckedChange = { viewModel.toggleReverbFreeze() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = GlassTokens.IosIndigo
+                            )
+                        )
+                    }
 
                     IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -1215,7 +1242,7 @@ fun SimpleModeScreen(
                         onValueChange = { viewModel.setEchoWet(it) },
                         valueRange = 0f..100f,
                         unit = "%",
-                        technicalValue = "Stereo Ping-Pong Delay Line",
+                        technicalValue = "Analog Tape Output Blend",
                         showTechnical = uiState.showTechnicalValues,
                         accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
@@ -1228,7 +1255,7 @@ fun SimpleModeScreen(
                         title = "Echo Time",
                         value = uiState.echoTimeMs.toFloat(),
                         onValueChange = { viewModel.setEchoTimeMs(it.toInt()) },
-                        valueRange = 50f..800f,
+                        valueRange = 50f..2500f,
                         unit = "ms",
                         technicalValue = "${uiState.echoTimeMs}ms delay tap",
                         showTechnical = uiState.showTechnicalValues,
@@ -1243,9 +1270,9 @@ fun SimpleModeScreen(
                         title = "Echo Feedback (Repeats)",
                         value = uiState.echoFeedbackPercent,
                         onValueChange = { viewModel.setEchoFeedback(it) },
-                        valueRange = 0f..80f,
+                        valueRange = 0f..95f,
                         unit = "%",
-                        technicalValue = "Tape-Damped Loop",
+                        technicalValue = "Tape Saturation Feedback Loop",
                         showTechnical = uiState.showTechnicalValues,
                         accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
