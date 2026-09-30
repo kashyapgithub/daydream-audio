@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PlainBand
@@ -188,7 +190,10 @@ fun GoldenEarScreen(
                                 text = "Challenge #${challenge.questionNumber}",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.IosBlue
+                                color = GlassTokens.IosBlue,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp)
                             )
                             Button(
                                 onClick = { viewModel.startNewEarChallenge() },
@@ -310,7 +315,11 @@ fun GoldenEarScreen(
                                             text = band.plainDescription,
                                             fontSize = 11.sp,
                                             color = GlassTokens.TextMuted,
-                                            maxLines = 1
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier
+                                                .padding(start = 8.dp)
+                                                .widthIn(max = 130.dp)
                                         )
                                     }
                                 }
@@ -345,7 +354,10 @@ fun GoldenEarScreen(
                                         text = if (correct) "Correct! +100 Points" else "Incorrect — listen to the A/B difference!",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = tintColor
+                                        color = tintColor,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
                                 }
                             }
@@ -368,13 +380,18 @@ fun GoldenEarScreen(
 
 @Composable
 private fun StatBox(title: String, value: String, unit: String, tint: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.widthIn(max = 110.dp)
+    ) {
         Text(
             text = title,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             color = GlassTokens.TextSecondary,
-            letterSpacing = 0.6.sp
+            letterSpacing = 0.6.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.Bottom) {
@@ -382,7 +399,9 @@ private fun StatBox(title: String, value: String, unit: String, tint: Color) {
                 text = value,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = tint
+                color = tint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (unit.isNotEmpty()) {
                 Spacer(modifier = Modifier.width(2.dp))

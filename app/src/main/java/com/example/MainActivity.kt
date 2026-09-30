@@ -154,7 +154,10 @@ class MainActivity : ComponentActivity() {
                                     spectrum = uiState.spectrum,
                                     reduceGlass = uiState.reduceGlass,
                                     onExpandSheet = { isNowPlayingSheetOpen = true },
-                                    modifier = Modifier.padding(bottom = 8.dp)
+                                    modifier = Modifier.padding(bottom = 8.dp),
+                                    positionMs = uiState.playbackPositionMs,
+                                    durationMs = uiState.playbackDurationMs,
+                                    audioRms = uiState.audioRms
                                 )
 
                                 // Floating Glass Navigation Tab Bar (PRD 22.5 & 22.11)

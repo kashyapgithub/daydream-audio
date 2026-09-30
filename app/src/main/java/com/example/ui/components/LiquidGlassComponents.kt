@@ -141,6 +141,10 @@ fun SonicGlassBackground(
         (spectrum[0] + spectrum[1] + spectrum[2]) / 3f
     } else 0.08f
 
+    val midEnergy = if (spectrum != null && spectrum.size >= 8) {
+        (spectrum[2] + spectrum[3] + spectrum[4]) / 3f
+    } else 0.08f
+
     val infiniteTransition = rememberInfiniteTransition(label = "idle_mesh_drift")
     val idleDrift by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -230,6 +234,31 @@ fun SonicGlassBackground(
                     ),
                     radius = poleCRadius,
                     center = Offset(size.width * 0.45f + (idleShift * 15f), size.height * 0.40f)
+                )
+
+                // Pole D: midrange magenta presence that follows vocal energy
+                val poleDRadius = (size.width * 0.34f) + (midEnergy * 130f) + (animatedRms * 120f)
+                val poleDAlpha = (0.07f + midEnergy * 0.14f).coerceIn(0.04f, 0.28f)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFBF5AF2).copy(alpha = poleDAlpha),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.62f - (idleShift * 22f), size.height * 0.30f + (idleShift * 14f)),
+                        radius = poleDRadius
+                    ),
+                    radius = poleDRadius,
+                    center = Offset(size.width * 0.62f - (idleShift * 22f), size.height * 0.30f + (idleShift * 14f))
+                )
+                // Cinematic vignette for depth
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.42f)),
+                        center = Offset(size.width / 2f, size.height / 2f),
+                        radius = maxOf(size.width, size.height) * 0.72f
+                    ),
+                    size = size
                 )
             }
         }
@@ -342,7 +371,8 @@ fun LiquidSlider(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isWarning) GlassTokens.IosRed else accentColor,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
 
@@ -668,7 +698,9 @@ fun ABCompareBar(
                             text = "GAIN-MATCH",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (gainMatchedAB) GlassTokens.IosTeal else GlassTokens.TextSecondary
+                            color = if (gainMatchedAB) GlassTokens.IosTeal else GlassTokens.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Spacer(modifier = Modifier.width(6.dp))
@@ -694,7 +726,9 @@ fun ABCompareBar(
                         text = if (isBypassed) "RAW" else "ACTIVE",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosGreen
+                        color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosGreen,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -718,7 +752,10 @@ fun NowPlayingGlassBar(
     spectrum: FloatArray,
     reduceGlass: Boolean = false,
     onExpandSheet: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    positionMs: Long = 0L,
+    durationMs: Long = 0L,
+    audioRms: Float = 0.2f
 ) {
     val active = isPlaying || isExternalActive
     val displayTitle = when {
@@ -729,7 +766,7 @@ fun NowPlayingGlassBar(
     }
     val displaySubtitle = when {
         localTrack != null -> "${localTrack.artist} • ${localTrack.formattedDuration}"
-        isExternalActive -> "Enhancing System Audio"
+        isExternalActive -> "External audio • meter unavailable"
         track != null -> track.era
         else -> "Lossless DSP Engine"
     }
@@ -798,25 +835,38 @@ fun NowPlayingGlassBar(
                 }
             }
 
-            // Live 6-Band Apple Music Equalizer
-            Row(
+            // Pro mini spectrum: single Canvas, neon glow + rounded caps
+            Canvas(
                 modifier = Modifier
                     .padding(horizontal = 10.dp)
-                    .height(24.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(2.5.dp)
+                    .width(52.dp)
+                    .height(26.dp)
             ) {
-                spectrum.take(6).forEach { level ->
-                    val barHeight = (level * 22f).coerceIn(3.5f, 22f)
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(barHeight.dp)
-                            .clip(GlassTokens.radiusPill)
-                            .background(
-                                if (active) SolidColor(GlassTokens.IosBlue)
-                                else SolidColor(Color.White.copy(alpha = 0.18f))
-                            )
+                val n = 8
+                val gap = 2.dp.toPx()
+                val bw = (size.width - gap * (n - 1)) / n
+                for (i in 0 until n) {
+                    val lvl = spectrum.getOrElse(i) { 0.08f }.coerceIn(0.06f, 1f)
+                    val bh = (lvl * size.height).coerceIn(3f, size.height)
+                    val x = i * (bw + gap)
+                    val y = size.height - bh
+                    val frac = i.toFloat() / (n - 1)
+                    val c = androidx.compose.ui.graphics.lerp(GlassTokens.IosOrange, GlassTokens.IosTeal, frac)
+                    drawRoundRect(
+                        color = c.copy(alpha = if (active) 0.28f else 0.08f),
+                        topLeft = Offset(x - 1f, y - 2f),
+                        size = Size(bw + 2f, bh + 2f),
+                        cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                    )
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            listOf(Color.White.copy(alpha = if (active) 0.9f else 0.25f), c),
+                            startY = y,
+                            endY = y + bh
+                        ),
+                        topLeft = Offset(x, y),
+                        size = Size(bw, bh),
+                        cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
                     )
                 }
             }
@@ -848,21 +898,15 @@ fun NowPlayingGlassBar(
             }
         }
 
-        // Apple Music MiniPlayer hairline scrub progress line
-        val infiniteTransition = rememberInfiniteTransition(label = "miniplayer_scrub")
-        val scrubProgress by infiniteTransition.animateFloat(
-            initialValue = 0.08f,
-            targetValue = 0.94f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 24000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "scrub_progress"
-        )
+        // Real playback progress when a local track reports position, otherwise an
+        // RMS-driven idle shimmer (honest: no fake 24s loop pretending to be a seek bar).
+        val hasRealProgress = durationMs > 0L && positionMs >= 0L
+        val realFraction = if (hasRealProgress) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+        val idleFraction = 0.30f + audioRms.coerceIn(0f, 0.6f) * 0.5f
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .fillMaxWidth(if (active) scrubProgress else 0.35f)
+                .fillMaxWidth(if (hasRealProgress) realFraction.coerceAtLeast(0.02f) else idleFraction)
                 .height(2.dp)
                 .clip(RoundedCornerShape(1.dp))
                 .background(
@@ -905,12 +949,14 @@ fun BandTooltipDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                         Text(
                             text = band.title,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = GlassTokens.TextPrimary
+                            color = GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = band.frequencyRange,
@@ -1000,14 +1046,22 @@ fun HomeSpectrumVisualizer(
     modifier: Modifier = Modifier
 ) {
     val active = isPlaying || isExternalActive
+    // Studio peak-hold caps: fall slowly so transients leave a pro trail.
+    val peaks = remember { FloatArray(8) { 0.05f } }
+    for (i in 0 until 8) {
+        val lvl = if (active) spectrum.getOrElse(i) { 0.05f }.coerceIn(0.03f, 1f) else 0.04f
+        peaks[i] = if (lvl >= peaks[i]) lvl else (peaks[i] - 0.022f).coerceAtLeast(lvl)
+    }
+    val freqLabels = listOf("60", "150", "400", "1k", "2.5k", "5k", "8k", "12k")
+    val peakDb = if (active) (20f * kotlin.math.log10(spectrum.maxOrNull()?.toDouble()?.coerceAtLeast(1e-3) ?: 0.05)).toFloat().coerceIn(-48f, 0f) else -48f
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(GlassTokens.radiusLg)
-            .background(GlassTokens.IosGroupedPrimary)
-            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusLg)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .background(Color(0xFF07080C))
+            .border(0.8.dp, Color.White.copy(alpha = 0.10f), GlassTokens.radiusLg)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Column {
             Row(
@@ -1015,7 +1069,7 @@ fun HomeSpectrumVisualizer(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Box(
                         modifier = Modifier
                             .size(7.dp)
@@ -1024,111 +1078,117 @@ fun HomeSpectrumVisualizer(
                     )
                     Spacer(modifier = Modifier.width(7.dp))
                     Text(
-                        text = "Real-Time Spectrum",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = GlassTokens.TextPrimary
+                        text = "SPECTRUM ANALYZER",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary,
+                        letterSpacing = 0.6.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
-                    text = if (isPlaying) "31Hz — 16kHz" else if (isExternalActive) "Streaming • Active DSP" else "Playback Paused",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = GlassTokens.TextSecondary
+                    text = if (!active) "STANDBY" else "PEAK ${String.format(java.util.Locale.US, "%+.0f", peakDb)} dB",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (!active) GlassTokens.TextSecondary else GlassTokens.IosTeal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(10.dp))
-            Box(
+            Spacer(modifier = Modifier.height(8.dp))
+            Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(128.dp)
             ) {
-                // Background Cubic Spline Neon Glow
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    if (spectrum.size >= 2) {
-                        val bandCount = spectrum.size
-                        val stepX = size.width / bandCount
-                        val points = mutableListOf<Offset>()
-                        for (i in 0 until bandCount) {
-                            val lvl = if (active) spectrum[i].coerceIn(0.05f, 1f) else 0.05f
-                            val px = stepX * i + (stepX / 2f)
-                            val py = size.height * (1f - (lvl * 0.88f))
-                            points.add(Offset(px, py))
-                        }
-
-                        val splinePath = Path()
-                        val fillPath = Path()
-                        splinePath.moveTo(points.first().x, points.first().y)
-                        fillPath.moveTo(points.first().x, size.height)
-                        fillPath.lineTo(points.first().x, points.first().y)
-
-                        for (i in 0 until points.size - 1) {
-                            val p0 = points[i]
-                            val p1 = points[i + 1]
-                            val controlX1 = (p0.x + p1.x) / 2f
-                            val controlY1 = p0.y
-                            val controlX2 = (p0.x + p1.x) / 2f
-                            val controlY2 = p1.y
-                            splinePath.cubicTo(controlX1, controlY1, controlX2, controlY2, p1.x, p1.y)
-                            fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, p1.x, p1.y)
-                        }
-                        fillPath.lineTo(points.last().x, size.height)
-                        fillPath.close()
-
-                        // Gradient fill beneath curve
-                        drawPath(
-                            path = fillPath,
+                val w = size.width
+                val h = size.height * 0.82f
+                val refTop = 0f
+                // Studio grid: -12/-24/-36 dB lines
+                val gridAlphas = listOf(0.16f, 0.10f, 0.07f)
+                for (g in 0..2) {
+                    val y = refTop + (h / 3f) * (g + 1)
+                    drawLine(
+                        color = Color.White.copy(alpha = gridAlphas[g]),
+                        start = Offset(0f, y),
+                        end = Offset(w, y),
+                        strokeWidth = 1f
+                    )
+                }
+                val n = 8
+                val gap = 8.dp.toPx()
+                val barW = (w - gap * (n - 1)) / n
+                for (index in 0 until n) {
+                    val lvl = if (active) spectrum.getOrElse(index) { 0.05f }.coerceIn(0.03f, 1f) else 0.04f
+                    val peak = peaks[index].coerceIn(0.03f, 1f)
+                    val x = index * (barW + gap)
+                    val barH = (lvl * h).coerceAtLeast(4f)
+                    val y = refTop + h - barH
+                    val fraction = index.toFloat() / (n - 1).coerceAtLeast(1)
+                    val base = androidx.compose.ui.graphics.lerp(GlassTokens.IosOrange, GlassTokens.IosTeal, fraction)
+                    val top = androidx.compose.ui.graphics.lerp(base, Color.White, 0.25f)
+                    // Outer neon glow
+                    drawRoundRect(
+                        color = base.copy(alpha = if (active) 0.22f else 0.05f),
+                        topLeft = Offset(x - 3f, y - 6f),
+                        size = Size(barW + 6f, barH + 8f),
+                        cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                    )
+                    // Main gradient body
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(top, base, base.copy(alpha = 0.55f)),
+                            startY = y,
+                            endY = y + barH
+                        ),
+                        topLeft = Offset(x, y),
+                        size = Size(barW, barH),
+                        cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                    )
+                    // Hot top edge
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = if (active) 0.85f else 0.15f),
+                        topLeft = Offset(x + 2f, y),
+                        size = Size(barW - 4f, 2.5.dp.toPx()),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    )
+                    // Falling peak cap
+                    val peakY = (refTop + h - peak * h).coerceIn(refTop, refTop + h - 2f)
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = if (active) 0.9f else 0.2f),
+                        topLeft = Offset(x, peakY),
+                        size = Size(barW, 2.dp.toPx()),
+                        cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+                    )
+                    // Floor reflection
+                    val reflH = (barH * 0.22f).coerceAtMost(size.height - h - 16.dp.toPx())
+                    if (reflH > 2f) {
+                        drawRoundRect(
                             brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    GlassTokens.IosTeal.copy(alpha = if (active) 0.16f else 0.03f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-
-                        // Top spline glow outline
-                        drawPath(
-                            path = splinePath,
-                            brush = Brush.horizontalGradient(
-                                listOf(GlassTokens.IosOrange, GlassTokens.IosTeal, GlassTokens.IosBlue)
+                                colors = listOf(base.copy(alpha = 0.20f), Color.Transparent),
+                                startY = refTop + h + 3f,
+                                endY = refTop + h + 3f + reflH
                             ),
-                            style = Stroke(width = 1.8.dp.toPx())
+                            topLeft = Offset(x, refTop + h + 3f),
+                            size = Size(barW, reflH),
+                            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                         )
                     }
                 }
-
-                // Foreground 8 Pill Bars
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val bandCount = spectrum.size.coerceAtLeast(1)
-                    for (index in spectrum.indices) {
-                        val rawLevel = spectrum[index]
-                        val animatedLevel by animateFloatAsState(
-                            targetValue = if (active) rawLevel.coerceIn(0.04f, 1f) else 0.04f,
-                            animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing),
-                            label = "apple_spectrum_bar_$index"
-                        )
-                        // Apple Spectral gradient: Warm Amber (Bass) to Electric Teal (Treble)
-                        val fraction = index.toFloat() / (bandCount - 1).coerceAtLeast(1)
-                        val barColor = androidx.compose.ui.graphics.lerp(
-                            GlassTokens.IosOrange,
-                            GlassTokens.IosTeal,
-                            fraction
-                        )
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(animatedLevel)
-                                .clip(GlassTokens.radiusPill)
-                                .background(
-                                    if (isPlaying) barColor.copy(alpha = 0.85f)
-                                    else Color.White.copy(alpha = 0.10f)
-                                )
-                        )
-                    }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                freqLabels.forEach {
+                    Text(
+                        text = it,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GlassTokens.TextSecondary.copy(alpha = 0.75f)
+                    )
                 }
             }
         }
@@ -1151,14 +1211,25 @@ fun SpatialStageVisualizer(
         animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f),
         label = "stage_width_anim"
     )
+    // Idle shimmer sweep so the stage feels alive even on static material.
+    val shimmer = rememberInfiniteTransition(label = "stage_shimmer")
+    val shimmerT by shimmer.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "stage_shimmer_t"
+    )
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(118.dp)
+            .height(148.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF161618))
-            .border(0.6.dp, GlassTokens.IosSeparator, RoundedCornerShape(16.dp))
+            .background(Color(0xFF07080C))
+            .border(0.6.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1167,7 +1238,7 @@ fun SpatialStageVisualizer(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Box(
                         modifier = Modifier
                             .size(7.dp)
@@ -1176,17 +1247,28 @@ fun SpatialStageVisualizer(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Spatial Soundstage Field",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = GlassTokens.TextPrimary
+                        text = "SOUNDSTAGE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextPrimary,
+                        letterSpacing = 0.6.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+                val widthLabel = when {
+                    isBypassed -> "DIRECT"
+                    animatedSpace < 30f -> "NARROW"
+                    animatedSpace < 65f -> "NATURAL"
+                    else -> "WIDE"
+                }
                 Text(
-                    text = if (isBypassed) "Direct Stereo (Bypassed)" else "Arc: ${(30 + animatedSpace * 0.9f).toInt()}° • $hrtfProfile",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosTeal
+                    text = if (isBypassed) "Direct Stereo (Bypassed)" else "${(30 + animatedSpace * 0.9f).toInt()}° • $widthLabel • $hrtfProfile",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosTeal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -1194,36 +1276,54 @@ fun SpatialStageVisualizer(
 
             Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 val cx = size.width / 2f
-                val cy = size.height * 0.78f
+                val cy = size.height * 0.80f
 
-                // Outer acoustic boundary rings
-                for (r in listOf(0.35f, 0.65f, 0.95f)) {
-                    val ringRadius = size.height * r
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.04f),
-                        radius = ringRadius,
-                        center = Offset(cx, cy),
-                        style = Stroke(width = 0.8.dp.toPx())
-                    )
-                }
-
-                // Soundstage Arc Sweep Angle (from 35 degrees up to 135 degrees)
-                val sweepAngle = 35f + (animatedSpace * 0.95f)
-                val startAngle = 270f - (sweepAngle / 2f)
-                val arcRadius = size.height * 0.70f
-
-                // Luminous acoustic sound field fan
-                drawArc(
+                // Depth rings with center glow
+                drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(
-                            if (isBypassed) Color.White.copy(alpha = 0.05f)
-                            else GlassTokens.IosIndigo.copy(alpha = 0.22f),
-                            if (isBypassed) Color.Transparent
-                            else GlassTokens.IosTeal.copy(alpha = 0.08f),
+                        listOf(
+                            (if (isBypassed) Color.White else GlassTokens.IosIndigo).copy(alpha = 0.10f),
                             Color.Transparent
                         ),
                         center = Offset(cx, cy),
-                        radius = arcRadius * 1.1f
+                        radius = size.height * 0.95f
+                    ),
+                    radius = size.height * 0.95f,
+                    center = Offset(cx, cy)
+                )
+                for (r in listOf(0.35f, 0.65f, 0.95f)) {
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.06f),
+                        radius = size.height * r,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 1f)
+                    )
+                }
+
+                val sweepAngle = 35f + (animatedSpace * 0.95f)
+                val startAngle = 270f - (sweepAngle / 2f)
+                val arcRadius = size.height * 0.72f
+
+                // Field fan: glow pass + core pass
+                drawArc(
+                    color = (if (isBypassed) Color.White else GlassTokens.IosIndigo).copy(alpha = 0.10f),
+                    startAngle = startAngle,
+                    sweepAngle = sweepAngle,
+                    useCenter = true,
+                    topLeft = Offset(cx - arcRadius, cy - arcRadius),
+                    size = Size(arcRadius * 2, arcRadius * 2)
+                )
+                drawArc(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            if (isBypassed) Color.White.copy(alpha = 0.06f)
+                            else GlassTokens.IosIndigo.copy(alpha = 0.30f),
+                            if (isBypassed) Color.Transparent
+                            else GlassTokens.IosTeal.copy(alpha = 0.10f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = arcRadius
                     ),
                     startAngle = startAngle,
                     sweepAngle = sweepAngle,
@@ -1231,11 +1331,19 @@ fun SpatialStageVisualizer(
                     topLeft = Offset(cx - arcRadius, cy - arcRadius),
                     size = Size(arcRadius * 2, arcRadius * 2)
                 )
-
-                // Stereo Arc outline stroke
+                // Arc outline: soft under-glow + crisp core
+                drawArc(
+                    color = GlassTokens.IosTeal.copy(alpha = 0.25f),
+                    startAngle = startAngle,
+                    sweepAngle = sweepAngle,
+                    useCenter = false,
+                    topLeft = Offset(cx - arcRadius, cy - arcRadius),
+                    size = Size(arcRadius * 2, arcRadius * 2),
+                    style = Stroke(width = 5.dp.toPx())
+                )
                 drawArc(
                     brush = Brush.horizontalGradient(
-                        listOf(GlassTokens.IosTeal, GlassTokens.IosIndigo, GlassTokens.IosBlue)
+                        listOf(Color.White, GlassTokens.IosTeal, GlassTokens.IosIndigo, GlassTokens.IosBlue)
                     ),
                     startAngle = startAngle,
                     sweepAngle = sweepAngle,
@@ -1245,39 +1353,59 @@ fun SpatialStageVisualizer(
                     style = Stroke(width = 2.dp.toPx())
                 )
 
-                // Left & Right virtual speaker nodes
+                // Traveling shimmer dot along the arc
+                if (!isBypassed) {
+                    val dotAngle = startAngle + sweepAngle * shimmerT
+                    val rad = Math.toRadians(dotAngle.toDouble())
+                    val dx = (cx + arcRadius * Math.cos(rad)).toFloat()
+                    val dy = (cy + arcRadius * Math.sin(rad)).toFloat()
+                    drawCircle(color = Color.White.copy(alpha = 0.25f), radius = 6.dp.toPx(), center = Offset(dx, dy))
+                    drawCircle(color = Color.White, radius = 2.2.dp.toPx(), center = Offset(dx, dy))
+                }
+
+                // L/R speaker nodes with pulse rings
                 val leftRad = Math.toRadians(startAngle.toDouble())
                 val rightRad = Math.toRadians((startAngle + sweepAngle).toDouble())
-
                 val lx = (cx + arcRadius * Math.cos(leftRad)).toFloat()
                 val ly = (cy + arcRadius * Math.sin(leftRad)).toFloat()
                 val rx = (cx + arcRadius * Math.cos(rightRad)).toFloat()
                 val ry = (cy + arcRadius * Math.sin(rightRad)).toFloat()
+                drawCircle(color = GlassTokens.IosTeal.copy(alpha = 0.22f), radius = 9.dp.toPx(), center = Offset(lx, ly))
+                drawCircle(color = Color.White.copy(alpha = 0.9f), radius = 3.dp.toPx(), center = Offset(lx, ly))
+                drawCircle(color = GlassTokens.IosTeal, radius = 1.8.dp.toPx(), center = Offset(lx, ly))
+                drawCircle(color = GlassTokens.IosIndigo.copy(alpha = 0.22f), radius = 9.dp.toPx(), center = Offset(rx, ry))
+                drawCircle(color = Color.White.copy(alpha = 0.9f), radius = 3.dp.toPx(), center = Offset(rx, ry))
+                drawCircle(color = GlassTokens.IosIndigo, radius = 1.8.dp.toPx(), center = Offset(rx, ry))
 
-                // Left speaker glow & node
-                drawCircle(color = GlassTokens.IosTeal.copy(alpha = 0.35f), radius = 6.dp.toPx(), center = Offset(lx, ly))
-                drawCircle(color = Color.White, radius = 2.8.dp.toPx(), center = Offset(lx, ly))
-
-                // Right speaker glow & node
-                drawCircle(color = GlassTokens.IosIndigo.copy(alpha = 0.35f), radius = 6.dp.toPx(), center = Offset(rx, ry))
-                drawCircle(color = Color.White, radius = 2.8.dp.toPx(), center = Offset(rx, ry))
-
-                // Center Listener Head Glyph (Cupertino style)
-                drawCircle(color = Color(0xFF2C2C2E), radius = 9.dp.toPx(), center = Offset(cx, cy))
-                drawCircle(color = Color.White.copy(alpha = 0.15f), radius = 9.dp.toPx(), center = Offset(cx, cy), style = Stroke(0.8.dp.toPx()))
-                // Ear indicators
+                // Listener head: glass dome + highlight
+                drawCircle(color = Color(0xFF1C1E24), radius = 10.dp.toPx(), center = Offset(cx, cy))
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+                        center = Offset(cx - 3.dp.toPx(), cy - 4.dp.toPx()),
+                        radius = 10.dp.toPx()
+                    ),
+                    radius = 10.dp.toPx(),
+                    center = Offset(cx, cy)
+                )
+                drawCircle(color = Color.White.copy(alpha = 0.18f), radius = 10.dp.toPx(), center = Offset(cx, cy), style = Stroke(1.dp.toPx()))
                 drawRoundRect(
                     color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosBlue,
-                    topLeft = Offset(cx - 11.5.dp.toPx(), cy - 4.dp.toPx()),
+                    topLeft = Offset(cx - 12.dp.toPx(), cy - 4.dp.toPx()),
                     size = Size(2.5.dp.toPx(), 8.dp.toPx()),
                     cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
                 )
                 drawRoundRect(
                     color = if (isBypassed) GlassTokens.TextSecondary else GlassTokens.IosBlue,
-                    topLeft = Offset(cx + 9.dp.toPx(), cy - 4.dp.toPx()),
+                    topLeft = Offset(cx + 9.5.dp.toPx(), cy - 4.dp.toPx()),
                     size = Size(2.5.dp.toPx(), 8.dp.toPx()),
                     cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
                 )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("MONO", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary.copy(alpha = 0.6f))
+                Text("STEREO WIDTH →", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary.copy(alpha = 0.6f))
             }
         }
     }
@@ -1285,22 +1413,30 @@ fun SpatialStageVisualizer(
 
 /**
  * Professional Studio LED Gain Reduction Meter
- * High-precision ladder display with dynamic dB thresholds (-1dB to -20dB)
+ * High-precision ladder display with dynamic dB thresholds (-1dB to -20dB).
+ * Reads MEASURED gain reduction from the DSP loop when available
+ * ([measuredGrDb] >= 0); falls back to the RMS-vs-threshold estimate only
+ * when the engine hasn't reported yet (e.g. never played).
  */
 @Composable
 fun LedCompressionMeter(
     thresholdDb: Float,
     ratio: Float,
     audioRms: Float,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    measuredGrDb: Float = -1f
 ) {
     val inputDb = (20f * kotlin.math.log10(audioRms.coerceAtLeast(0.001f))).coerceIn(-60f, 0f)
     val overThreshold = (inputDb - thresholdDb).coerceAtLeast(0f)
     val estimatedGrDb = if (overThreshold > 0f) overThreshold * (1f - (1f / ratio)) else 0f
+    // Measured GR already carries hardware-style ballistics from the engine,
+    // so it drives the ladder directly; the estimate keeps spring smoothing.
+    val useMeasured = measuredGrDb >= 0f
+    val targetGr = if (useMeasured) measuredGrDb else estimatedGrDb
 
     val animatedGr by animateFloatAsState(
-        targetValue = estimatedGrDb,
-        animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f),
+        targetValue = targetGr,
+        animationSpec = if (useMeasured) tween(durationMillis = 60) else spring(dampingRatio = 0.85f, stiffness = 400f),
         label = "compressor_gr_anim"
     )
 
@@ -1319,49 +1455,78 @@ fun LedCompressionMeter(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "GAIN REDUCTION (GR)",
+                    text = if (useMeasured) "GAIN REDUCTION • MEASURED" else "GAIN REDUCTION • EST",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = GlassTokens.TextSecondary,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
                 )
                 Text(
-                    text = if (animatedGr > 0.3f) "-${String.format(java.util.Locale.US, "%.1f", animatedGr)} dB" else "0.0 dB",
+                    text = if (animatedGr > 0.05f) "-${String.format(java.util.Locale.US, "%.1f", animatedGr)} dB" else "0.0 dB",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (animatedGr > 6f) GlassTokens.IosRed
                             else if (animatedGr > 2f) GlassTokens.IosOrange
-                            else GlassTokens.IosGreen
+                            else GlassTokens.IosGreen,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
             Spacer(modifier = Modifier.height(7.dp))
 
-            // 10-segment LED ladder
-            Row(
-                modifier = Modifier.fillMaxWidth().height(9.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                val thresholds = listOf(1f, 2f, 3f, 4f, 6f, 8f, 10f, 12f, 16f, 20f)
-                for (th in thresholds) {
+            // 12-segment pro LED ladder with glow + scale
+            Canvas(modifier = Modifier.fillMaxWidth().height(22.dp)) {
+                val thresholds = listOf(1f, 2f, 3f, 4f, 5f, 6f, 8f, 10f, 12f, 14f, 16f, 20f)
+                val n = thresholds.size
+                val gap = 4.dp.toPx()
+                val segW = (size.width - gap * (n - 1)) / n
+                thresholds.forEachIndexed { idx, th ->
                     val isActive = animatedGr >= th
-                    val segmentColor = when {
+                    val base = when {
                         th >= 12f -> GlassTokens.IosRed
                         th >= 6f -> GlassTokens.IosOrange
                         else -> GlassTokens.IosGreen
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(
-                                if (isActive) segmentColor
-                                else segmentColor.copy(alpha = 0.12f)
-                            )
+                    val x = idx * (segW + gap)
+                    if (isActive) {
+                        drawRoundRect(
+                            color = base.copy(alpha = 0.30f),
+                            topLeft = Offset(x - 2f, -2f),
+                            size = Size(segW + 4f, size.height + 4f),
+                            cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                        )
+                    }
+                    drawRoundRect(
+                        brush = if (isActive) Brush.verticalGradient(
+                            listOf(Color.White.copy(alpha = 0.85f), base, base.copy(alpha = 0.6f)),
+                            startY = 0f, endY = size.height
+                        ) else Brush.verticalGradient(
+                            listOf(base.copy(alpha = 0.14f), base.copy(alpha = 0.08f))
+                        ),
+                        topLeft = Offset(x, 0f),
+                        size = Size(segW, size.height),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                     )
+                    if (isActive) {
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.9f),
+                            topLeft = Offset(x + 2f, 1f),
+                            size = Size(segW - 4f, 2f),
+                            cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+                        )
+                    }
                 }
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("1dB", fontSize = 8.sp, color = GlassTokens.TextSecondary)
+                Text("6dB", fontSize = 8.sp, color = GlassTokens.TextSecondary)
+                Text("12dB", fontSize = 8.sp, color = GlassTokens.TextSecondary)
+                Text("20dB", fontSize = 8.sp, color = GlassTokens.TextSecondary)
             }
         }
     }
@@ -1556,7 +1721,7 @@ fun AnalogCassetteDeck(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Box(
                         modifier = Modifier
                             .size(7.dp)
@@ -1569,7 +1734,9 @@ fun AnalogCassetteDeck(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFD4A373),
-                        letterSpacing = 0.8.sp
+                        letterSpacing = 0.8.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -1578,7 +1745,9 @@ fun AnalogCassetteDeck(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isPlaying) GlassTokens.IosGreen else GlassTokens.TextMuted,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -1681,39 +1850,76 @@ fun AnalogCassetteDeck(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Analog VU Warm Amber Level Indicator
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "TAPE SATURATION VU",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GlassTokens.TextMuted,
-                    letterSpacing = 0.5.sp
-                )
-
+            // Pro deck-bridge VU: glowing needle + scale instead of flat boxes
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    for (i in 1..8) {
-                        val active = isPlaying && (i <= rmsLevel)
-                        val barColor = when {
-                            i >= 7 -> Color(0xFFFF453A)
-                            i >= 5 -> Color(0xFFFF9F0A)
-                            else -> Color(0xFF30D158)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .width(8.dp)
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(if (active) barColor else barColor.copy(alpha = 0.12f))
+                    Text(
+                        text = "TAPE SATURATION VU",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextMuted,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = if (!isPlaying) "-∞ dB" else String.format(
+                            java.util.Locale.US, "%+.1f dB",
+                            (20f * kotlin.math.log10(audioRms.coerceAtLeast(0.005f).toDouble())).toFloat().coerceIn(-20f, 3f)
+                        ),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFD4A373)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Canvas(modifier = Modifier.fillMaxWidth().height(16.dp)) {
+                    val w = size.width
+                    val h = size.height
+                    drawRoundRect(
+                        color = Color.Black.copy(alpha = 0.55f),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(w, h),
+                        cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                    )
+                    // Warm zone wash: green → amber → red
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFF30D158).copy(alpha = 0.35f),
+                                Color(0xFFFF9F0A).copy(alpha = 0.40f),
+                                Color(0xFFFF453A).copy(alpha = 0.45f)
+                            )
+                        ),
+                        topLeft = Offset(2f, 2f),
+                        size = Size(w - 4f, h - 4f)
+                    )
+                    // Scale ticks
+                    for (t in 0..10) {
+                        val x = w * t / 10f
+                        drawLine(
+                            color = Color.Black.copy(alpha = 0.55f),
+                            start = Offset(x, 2f), end = Offset(x, h - 2f),
+                            strokeWidth = 1f
                         )
                     }
+                    val norm = ((audioRms.coerceIn(0f, 0.9f)) / 0.9f).coerceIn(0f, 1f)
+                    val nx = w * (if (isPlaying) norm else 0.02f)
+                    // Glow + needle
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.35f),
+                        topLeft = Offset(nx - 7f, -2f),
+                        size = Size(14f, h + 4f),
+                        cornerRadius = CornerRadius(7f, 7f)
+                    )
+                    drawLine(
+                        color = Color.White,
+                        start = Offset(nx, 0f), end = Offset(nx, h),
+                        strokeWidth = 2.5.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
                 }
             }
         }
@@ -1738,15 +1944,15 @@ fun ParametricEqCurveVisualizer(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(130.dp)
+            .height(182.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF101012))
-            .border(0.6.dp, Color(0xFF28282A), RoundedCornerShape(12.dp))
+            .background(Color(0xFF07080C))
+            .border(0.6.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
             .padding(vertical = 8.dp, horizontal = 10.dp)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
-            val h = size.height
+            val h = size.height - 16.dp.toPx()
             val centerY = h / 2f
             val maxDb = 12f
 
@@ -1764,34 +1970,51 @@ fun ParametricEqCurveVisualizer(
                 return centerY - (clampedDb / maxDb) * (centerY * 0.85f)
             }
 
-            // 1. Grid lines: dB reference lines
+            // Studio grid: dB lines + log freq lines
             val dBLines = listOf(12f, 6f, 0f, -6f, -12f)
             for (db in dBLines) {
                 val y = dbToY(db)
                 val isZero = db == 0f
                 drawLine(
-                    color = if (isZero) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f),
+                    color = if (isZero) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.07f),
                     start = Offset(0f, y),
                     end = Offset(w, y),
-                    strokeWidth = if (isZero) 1.dp.toPx() else 0.6.dp.toPx()
+                    strokeWidth = if (isZero) 1.2.dp.toPx() else 1f
                 )
             }
-
-            // Frequency reference vertical lines: 100Hz, 1kHz, 10kHz
-            val fGrid = listOf(100f, 1000f, 10000f)
+            val fGrid = listOf(50f, 100f, 200f, 500f, 1000f, 2000f, 5000f, 10000f)
             for (f in fGrid) {
                 val x = freqToX(f)
+                val major = f == 100f || f == 1000f || f == 10000f
                 drawLine(
-                    color = Color.White.copy(alpha = 0.08f),
+                    color = Color.White.copy(alpha = if (major) 0.12f else 0.05f),
                     start = Offset(x, 0f),
                     end = Offset(x, h),
-                    strokeWidth = 0.6.dp.toPx()
+                    strokeWidth = 1f
                 )
             }
 
-            // 1.5 Dual Real-Time Analyzer (Pre vs Post RTA Spectrum Overlay)
+            // Q bandwidth shading per active band (pro touch: shows resonance width)
+            for (b in bands) {
+                if (kotlin.math.abs(b.gainDb) > 0.4f) {
+                    val cx = freqToX(b.hz.toFloat())
+                    val bwOct = (1.2f / b.q.coerceIn(0.3f, 10f)).coerceIn(0.12f, 2.5f)
+                    val fLo = (b.hz / Math.pow(2.0, (bwOct / 2).toDouble())).toFloat()
+                    val fHi = (b.hz * Math.pow(2.0, (bwOct / 2).toDouble())).toFloat()
+                    val x0 = freqToX(fLo.coerceIn(20f, 20000f))
+                    val x1 = freqToX(fHi.coerceIn(20f, 20000f))
+                    drawRoundRect(
+                        color = GlassTokens.IosTeal.copy(alpha = 0.10f),
+                        topLeft = Offset(x0, 0f),
+                        size = Size((x1 - x0).coerceAtLeast(4f), h),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    )
+                }
+            }
+
+            // Dual Real-Time Analyzer (Pre vs Post RTA Spectrum Overlay)
             val rtaFreqs = listOf(35f, 90f, 220f, 550f, 1400f, 3600f, 8500f, 16000f)
-            val rtaBinWidth = (w / 12f).coerceAtLeast(14.dp.toPx())
+            val rtaBinWidth = (w / 14f).coerceAtLeast(12.dp.toPx())
             for (i in 0 until 8) {
                 val binF = rtaFreqs.getOrElse(i) { 1000f }
                 val binX = freqToX(binF)
@@ -1806,22 +2029,19 @@ fun ParametricEqCurveVisualizer(
                 }
                 val postEnergy = (rawEnergy * (1f + (eqBoostDb / 12f) * 0.45f)).coerceIn(0.02f, 1f)
 
-                // Pre-EQ RTA bar (subtle translucent cyan pillar)
-                val preBarHeight = (rawEnergy * (h * 0.70f)).coerceAtLeast(3f)
+                val preBarHeight = (rawEnergy * (h * 0.62f)).coerceAtLeast(3f)
                 drawRoundRect(
-                    color = GlassTokens.IosTeal.copy(alpha = if (active) 0.16f else 0.06f),
+                    color = GlassTokens.IosBlue.copy(alpha = if (active) 0.20f else 0.06f),
                     topLeft = Offset(binX - rtaBinWidth * 0.42f, h - preBarHeight),
                     size = Size(rtaBinWidth * 0.84f, preBarHeight),
                     cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
                 )
-
-                // Post-EQ RTA bar (brighter, neon-tinted active output peak)
-                val postBarHeight = (postEnergy * (h * 0.70f)).coerceAtLeast(2f)
+                val postBarHeight = (postEnergy * (h * 0.62f)).coerceAtLeast(2f)
                 drawRoundRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            GlassTokens.IosGreen.copy(alpha = if (active) 0.48f else 0.14f),
-                            GlassTokens.IosGreen.copy(alpha = if (active) 0.14f else 0.03f)
+                            Color.White.copy(alpha = if (active) 0.55f else 0.12f),
+                            GlassTokens.IosTeal.copy(alpha = if (active) 0.50f else 0.10f)
                         ),
                         startY = h - postBarHeight,
                         endY = h
@@ -1832,16 +2052,14 @@ fun ParametricEqCurveVisualizer(
                 )
             }
 
-            // 2. Compute composite transfer function across 80 sample points
-            val numSamples = 80
+            // Compute composite transfer function across 120 sample points
+            val numSamples = 120
             val curvePoints = mutableListOf<Offset>()
             for (i in 0..numSamples) {
                 val norm = i / numSamples.toFloat()
                 val minF = 20.0
                 val maxF = 20000.0
                 val f = (minF * Math.pow(maxF / minF, norm.toDouble())).toFloat()
-
-                // Compute sum of bell filter gains at f
                 var totalGainDb = 0f
                 for (b in bands) {
                     if (kotlin.math.abs(b.gainDb) > 0.05f) {
@@ -1851,34 +2069,26 @@ fun ParametricEqCurveVisualizer(
                         totalGainDb += b.gainDb / denom
                     }
                 }
-                val px = norm * w
-                val py = dbToY(totalGainDb)
-                curvePoints.add(Offset(px, py))
+                curvePoints.add(Offset(norm * w, dbToY(totalGainDb)))
             }
 
-            // 3. Draw gradient area fill under the curve
             if (curvePoints.isNotEmpty()) {
                 val fillPath = Path().apply {
                     moveTo(curvePoints.first().x, centerY)
-                    for (pt in curvePoints) {
-                        lineTo(pt.x, pt.y)
-                    }
+                    for (pt in curvePoints) lineTo(pt.x, pt.y)
                     lineTo(curvePoints.last().x, centerY)
                     close()
                 }
-
                 drawPath(
                     path = fillPath,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            GlassTokens.IosTeal.copy(alpha = 0.22f),
-                            GlassTokens.IosBlue.copy(alpha = 0.06f),
+                            GlassTokens.IosTeal.copy(alpha = 0.30f),
+                            GlassTokens.IosBlue.copy(alpha = 0.10f),
                             Color.Transparent
                         )
                     )
                 )
-
-                // 4. Draw glowing neon curve line
                 val strokePath = Path().apply {
                     moveTo(curvePoints.first().x, curvePoints.first().y)
                     for (i in 1 until curvePoints.size) {
@@ -1886,39 +2096,55 @@ fun ParametricEqCurveVisualizer(
                         val p1 = curvePoints[i]
                         val midX = (p0.x + p1.x) / 2f
                         val midY = (p0.y + p1.y) / 2f
-                        quadraticBezierTo(p0.x, p0.y, midX, midY)
+                        quadraticTo(p0.x, p0.y, midX, midY)
                     }
                     lineTo(curvePoints.last().x, curvePoints.last().y)
                 }
-
+                // Outer glow pass
+                drawPath(
+                    path = strokePath,
+                    color = GlassTokens.IosTeal.copy(alpha = 0.28f),
+                    style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
+                )
+                // Core neon pass
                 drawPath(
                     path = strokePath,
                     brush = Brush.horizontalGradient(
-                        colors = listOf(GlassTokens.IosBlue, GlassTokens.IosTeal, GlassTokens.IosGreen)
+                        colors = listOf(Color.White, GlassTokens.IosTeal, GlassTokens.IosBlue)
                     ),
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                    style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
 
-            // 5. Draw the 10 Band Node Markers
+            // 10 Band Node Markers with glow
             for (b in bands) {
                 val nodeX = freqToX(b.hz.toFloat())
                 val nodeY = dbToY(b.gainDb)
                 val isActive = kotlin.math.abs(b.gainDb) > 0.5f
-
-                // Outer halo glow
                 drawCircle(
-                    color = (if (isActive) GlassTokens.IosTeal else Color.White).copy(alpha = if (isActive) 0.35f else 0.12f),
-                    radius = if (isActive) 6.dp.toPx() else 4.dp.toPx(),
+                    color = (if (isActive) GlassTokens.IosTeal else Color.White).copy(alpha = if (isActive) 0.30f else 0.10f),
+                    radius = if (isActive) 9.dp.toPx() else 6.dp.toPx(),
                     center = Offset(nodeX, nodeY)
                 )
-                // Center solid node dot
                 drawCircle(
-                    color = if (isActive) GlassTokens.IosTeal else Color(0xFF8E8E93),
-                    radius = 3.dp.toPx(),
+                    color = Color.Black.copy(alpha = 0.6f),
+                    radius = 4.6.dp.toPx(),
                     center = Offset(nodeX, nodeY)
                 )
+                drawCircle(
+                    color = if (isActive) Color.White else Color(0xFF8E8E93),
+                    radius = 3.2.dp.toPx(),
+                    center = Offset(nodeX, nodeY)
+                )
+                if (isActive) {
+                    drawCircle(
+                        color = GlassTokens.IosTeal,
+                        radius = 1.6.dp.toPx(),
+                        center = Offset(nodeX, nodeY)
+                    )
+                }
             }
+            // Freq labels drawn in overlay Row below (kept out of Canvas for font clarity)
         }
 
         // Header overlay: Scale markers & Dual RTA status
@@ -1979,7 +2205,7 @@ fun EarActivityRings(
             val strokeW = 6.5.dp.toPx()
             val center = Offset(size.width / 2f, size.height / 2f)
 
-            // Ring 1 (Outer): Score (Apple Cyan/Blue)
+            // Ring 1 (Outer): Score (Apple Cyan/Blue) with glow
             val r1 = (size.width / 2f) - strokeW / 2f
             drawCircle(
                 color = GlassTokens.IosBlue.copy(alpha = 0.15f),
@@ -1988,7 +2214,19 @@ fun EarActivityRings(
             )
             if (animatedScoreSweep > 0f) {
                 drawArc(
-                    color = GlassTokens.IosBlue,
+                    color = GlassTokens.IosBlue.copy(alpha = 0.25f),
+                    startAngle = -90f,
+                    sweepAngle = animatedScoreSweep,
+                    useCenter = false,
+                    style = Stroke(width = strokeW + 5.dp.toPx(), cap = StrokeCap.Round),
+                    topLeft = Offset(center.x - r1, center.y - r1),
+                    size = Size(r1 * 2f, r1 * 2f)
+                )
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        listOf(Color.White, GlassTokens.IosBlue, GlassTokens.IosTeal),
+                        center = center
+                    ),
                     startAngle = -90f,
                     sweepAngle = animatedScoreSweep,
                     useCenter = false,
@@ -1998,7 +2236,7 @@ fun EarActivityRings(
                 )
             }
 
-            // Ring 2 (Middle): Streak (Apple Green)
+            // Ring 2 (Middle): Streak (Apple Green) with glow
             val r2 = r1 - strokeW - 2.5.dp.toPx()
             drawCircle(
                 color = GlassTokens.IosGreen.copy(alpha = 0.15f),
@@ -2006,6 +2244,15 @@ fun EarActivityRings(
                 style = Stroke(width = strokeW)
             )
             if (animatedStreakSweep > 0f) {
+                drawArc(
+                    color = GlassTokens.IosGreen.copy(alpha = 0.25f),
+                    startAngle = -90f,
+                    sweepAngle = animatedStreakSweep,
+                    useCenter = false,
+                    style = Stroke(width = strokeW + 5.dp.toPx(), cap = StrokeCap.Round),
+                    topLeft = Offset(center.x - r2, center.y - r2),
+                    size = Size(r2 * 2f, r2 * 2f)
+                )
                 drawArc(
                     color = GlassTokens.IosGreen,
                     startAngle = -90f,
@@ -2017,7 +2264,7 @@ fun EarActivityRings(
                 )
             }
 
-            // Ring 3 (Inner): Accuracy / Challenges (Apple Coral Red)
+            // Ring 3 (Inner): Accuracy / Challenges (Apple Coral Red) with glow
             val r3 = r2 - strokeW - 2.5.dp.toPx()
             drawCircle(
                 color = GlassTokens.IosRed.copy(alpha = 0.15f),
@@ -2025,6 +2272,15 @@ fun EarActivityRings(
                 style = Stroke(width = strokeW)
             )
             if (animatedAccuracySweep > 0f) {
+                drawArc(
+                    color = GlassTokens.IosRed.copy(alpha = 0.25f),
+                    startAngle = -90f,
+                    sweepAngle = animatedAccuracySweep,
+                    useCenter = false,
+                    style = Stroke(width = strokeW + 5.dp.toPx(), cap = StrokeCap.Round),
+                    topLeft = Offset(center.x - r3, center.y - r3),
+                    size = Size(r3 * 2f, r3 * 2f)
+                )
                 drawArc(
                     color = GlassTokens.IosRed,
                     startAngle = -90f,
@@ -2089,7 +2345,7 @@ fun VinylTurntableDeck(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Box(
                         modifier = Modifier
                             .size(7.dp)
@@ -2102,7 +2358,9 @@ fun VinylTurntableDeck(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFFF9F0A),
-                        letterSpacing = 0.8.sp
+                        letterSpacing = 0.8.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -2111,7 +2369,9 @@ fun VinylTurntableDeck(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isPlaying) GlassTokens.IosGreen else GlassTokens.TextMuted,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -2177,7 +2437,7 @@ fun VinylTurntableDeck(
                             )
                         }
 
-                        // Center Record Label
+                        // Center Record Label with gloss highlight
                         val labelRadius = platterRadius * 0.38f
                         drawCircle(
                             brush = Brush.sweepGradient(
@@ -2187,6 +2447,30 @@ fun VinylTurntableDeck(
                             radius = labelRadius,
                             center = platterCenter
                         )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(Color.White.copy(alpha = 0.30f), Color.Transparent),
+                                center = Offset(platterCenter.x - labelRadius * 0.35f, platterCenter.y - labelRadius * 0.35f),
+                                radius = labelRadius
+                            ),
+                            radius = labelRadius,
+                            center = platterCenter
+                        )
+                        // Rotating light streak across grooves (vinyl sheen sweep)
+                        rotate(degrees = if (isPlaying) rotationAngle * 1.0f else 0f, pivot = platterCenter) {
+                            drawArc(
+                                brush = Brush.sweepGradient(
+                                    listOf(Color.Transparent, Color.White.copy(alpha = 0.14f), Color.Transparent),
+                                    center = platterCenter
+                                ),
+                                startAngle = 0f,
+                                sweepAngle = 70f,
+                                useCenter = false,
+                                topLeft = Offset(platterCenter.x - platterRadius, platterCenter.y - platterRadius),
+                                size = Size(platterRadius * 2f, platterRadius * 2f),
+                                style = Stroke(width = platterRadius * 0.55f)
+                            )
+                        }
 
                         // Spindle Hole
                         drawCircle(
@@ -2246,14 +2530,19 @@ fun VinylTurntableDeck(
                     text = trackTitle ?: "70s Vinyl Acoustic Master",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = GlassTokens.TextPrimary
+                    color = GlassTokens.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
                 )
                 Text(
                     text = "ANALOG PHONO PREAMP",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     color = GlassTokens.TextMuted,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -2367,7 +2656,9 @@ fun NowPlayingModalSheet(
                 text = displaySubtitle,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = GlassTokens.IosTeal
+                color = GlassTokens.IosTeal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -2385,7 +2676,9 @@ fun NowPlayingModalSheet(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     color = GlassTokens.TextSecondary,
-                    letterSpacing = 0.6.sp
+                    letterSpacing = 0.6.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -2444,6 +2737,9 @@ fun NowPlayingModalSheet(
                 }
             } else {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    // Honest indeterminate state: no position exists for synth/external
+                    // sources, so show an RMS-driven shimmer instead of a fake 75%.
+                    val idleFrac = (0.22f + audioRms.coerceIn(0f, 0.6f) * 0.6f).coerceIn(0.15f, 0.85f)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2453,7 +2749,7 @@ fun NowPlayingModalSheet(
                     ) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(if (isPlaying || isExternalActive) 0.75f else 0.25f)
+                                .fillMaxWidth(if (isPlaying || isExternalActive) idleFrac else 0.25f)
                                 .height(4.dp)
                                 .clip(GlassTokens.radiusPill)
                                 .background(if (isExternalActive) GlassTokens.IosGreen else GlassTokens.IosBlue)
@@ -2464,8 +2760,8 @@ fun NowPlayingModalSheet(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(if (isExternalActive) "Streaming Live Audio" else "Synthesizer Loop", fontSize = 11.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.Medium)
-                        Text(if (isExternalActive) "Active DSP Engine" else "Infinite", fontSize = 11.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.Medium)
+                        Text(if (isExternalActive) "External audio • no capture" else "Demo synth • no timeline", fontSize = 11.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.Medium)
+                        Text(if (isExternalActive) "Meter unavailable" else "Infinite", fontSize = 11.sp, color = GlassTokens.TextMuted, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -2616,7 +2912,7 @@ fun SoundTargetCarousel(
                         .clip(GlassTokens.radiusMd)
                         .background(targetBg)
                         .border(
-                            width = if (isSelected) 1.2.dp else 0.8.dp,
+                            width = 1.2.dp,
                             brush = targetBorder,
                             shape = GlassTokens.radiusMd
                         )
@@ -2647,7 +2943,7 @@ fun SoundTargetCarousel(
                                         .border(0.6.dp, Color.White.copy(alpha = 0.35f), GlassTokens.radiusPill)
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
-                                    Text("ACTIVE", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("ACTIVE", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -2668,6 +2964,36 @@ fun SoundTargetCarousel(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(7.dp))
+                        // Pro mini 5-band EQ preview carved from the preset curve
+                        Canvas(modifier = Modifier.fillMaxWidth().height(26.dp)) {
+                            val vals = listOf(target.rumbleDb, target.warmthDb, target.bodyDb, target.clarityDb, target.airDb)
+                            val n = vals.size
+                            val gap = 4.dp.toPx()
+                            val bw = (size.width - gap * (n - 1)) / n
+                            vals.forEachIndexed { i, db ->
+                                val norm = ((db + 6f) / 12f).coerceIn(0.08f, 1f)
+                                val bh = (norm * size.height).coerceAtLeast(3f)
+                                val x = i * (bw + gap)
+                                val y = size.height - bh
+                                val frac = i.toFloat() / (n - 1)
+                                val c = androidx.compose.ui.graphics.lerp(GlassTokens.IosOrange, GlassTokens.IosTeal, frac)
+                                drawRoundRect(
+                                    color = if (isSelected) c.copy(alpha = 0.85f) else c.copy(alpha = 0.35f),
+                                    topLeft = Offset(x, y),
+                                    size = Size(bw, bh),
+                                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                                )
+                                if (isSelected) {
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.8f),
+                                        topLeft = Offset(x + 1.5f, y),
+                                        size = Size(bw - 3f, 1.6.dp.toPx()),
+                                        cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2719,6 +3045,7 @@ fun HearingComfortBadge(
             )
             .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2743,7 +3070,9 @@ fun HearingComfortBadge(
                             text = "$dBSpl dB SPL",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = GlassTokens.TextPrimary
+                            color = GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -2797,11 +3126,46 @@ fun HearingComfortBadge(
                             text = if (isLimiterActive) "LIMITER ON" else "LIMITER",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isLimiterActive) GlassTokens.IosBlue else GlassTokens.TextSecondary
+                            color = if (isLimiterActive) GlassTokens.IosBlue else GlassTokens.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
             }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        // Pro SPL exposure gauge 58..96dB with safe/moderate/loud zones
+        Canvas(modifier = Modifier.fillMaxWidth().height(10.dp)) {
+            val w = size.width
+            val h = size.height
+            fun xFor(spl: Int): Float = ((spl - 58f) / (96f - 58f)).coerceIn(0f, 1f) * w
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.07f),
+                topLeft = Offset(0f, 0f), size = Size(w, h),
+                cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+            )
+            drawRect(color = GlassTokens.IosGreen.copy(alpha = 0.35f), topLeft = Offset(xFor(58), 0f), size = Size(xFor(75) - xFor(58), h))
+            drawRect(color = GlassTokens.IosOrange.copy(alpha = 0.40f), topLeft = Offset(xFor(75), 0f), size = Size(xFor(85) - xFor(75), h))
+            drawRect(color = GlassTokens.IosRed.copy(alpha = 0.45f), topLeft = Offset(xFor(85), 0f), size = Size(xFor(96) - xFor(85), h))
+            val nx = xFor(dBSpl)
+            drawRoundRect(
+                color = statusColor.copy(alpha = 0.35f),
+                topLeft = Offset(nx - 8f, -2f), size = Size(16f, h + 4f),
+                cornerRadius = CornerRadius(8f, 8f)
+            )
+            drawRoundRect(
+                brush = Brush.verticalGradient(listOf(Color.White, statusColor)),
+                topLeft = Offset(nx - 3.5f, 0f), size = Size(7f, h),
+                cornerRadius = CornerRadius(3.5f, 3.5f)
+            )
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("58 QUIET", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary.copy(alpha = 0.6f))
+            Text("75 / 85 LIMITS", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary.copy(alpha = 0.6f))
+            Text("96 LOUD", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary.copy(alpha = 0.6f))
+        }
         }
     }
 }
@@ -2986,15 +3350,20 @@ fun PhaseCorrelationMeter(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Meter Track with liquid recessed well and surface rim
+        // Meter Track with glow needle + tick marks + trail
+        // Short trail so movement reads as analog ballistics, not a jumping pill.
+        val trail = remember { FloatArray(12) { 0.85f } }
+        val normNow = ((animatedCorr + 1.0f) / 2.0f).coerceIn(0f, 1f)
+        for (i in trail.size - 1 downTo 1) trail[i] = trail[i - 1]
+        trail[0] = normNow
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(14.dp)
+                .height(20.dp)
                 .clip(GlassTokens.radiusPill)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFF0F1015), Color(0xFF1B1D26))
+                        listOf(Color(0xFF07080C), Color(0xFF14161D))
                     )
                 )
                 .border(
@@ -3004,64 +3373,64 @@ fun PhaseCorrelationMeter(
                     ),
                     GlassTokens.radiusPill
                 )
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = 6.dp, vertical = 3.dp),
             contentAlignment = Alignment.CenterStart
         ) {
-            // Zone Gradients
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
                 val midX = w / 2f
-
-                // Left track (-1 to 0): Red to Yellow
                 drawRect(
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFFFF453A).copy(alpha = 0.35f), Color(0xFFFFD60A).copy(alpha = 0.25f)),
-                        startX = 0f,
-                        endX = midX
+                        colors = listOf(Color(0xFFFF453A).copy(alpha = 0.40f), Color(0xFFFFD60A).copy(alpha = 0.28f)),
+                        startX = 0f, endX = midX
                     ),
-                    topLeft = Offset(0f, 0f),
-                    size = Size(midX, h)
+                    topLeft = Offset(0f, 0f), size = Size(midX, h)
                 )
-
-                // Right track (0 to +1): Yellow to Green
                 drawRect(
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFFFFD60A).copy(alpha = 0.25f), Color(0xFF30D158).copy(alpha = 0.35f)),
-                        startX = midX,
-                        endX = w
+                        colors = listOf(Color(0xFFFFD60A).copy(alpha = 0.28f), Color(0xFF30D158).copy(alpha = 0.40f)),
+                        startX = midX, endX = w
                     ),
-                    topLeft = Offset(midX, 0f),
-                    size = Size(w - midX, h)
+                    topLeft = Offset(midX, 0f), size = Size(w - midX, h)
                 )
-
-                // Center line at 0.0
+                // Tick marks at -1/-0.5/0/+0.5/+1
+                for (t in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+                    val x = w * t
+                    drawLine(
+                        color = Color.White.copy(alpha = if (t == 0.5f) 0.7f else 0.30f),
+                        start = Offset(x, 0f), end = Offset(x, h),
+                        strokeWidth = if (t == 0.5f) 2f else 1f
+                    )
+                }
+                // Fading trail
+                for (i in trail.size - 1 downTo 1) {
+                    val x = w * trail[i].coerceIn(0f, 1f)
+                    drawRoundRect(
+                        color = statusColor.copy(alpha = 0.05f + (1f - i.toFloat() / trail.size) * 0.10f),
+                        topLeft = Offset(x - 5f, 1f),
+                        size = Size(10f, h - 2f),
+                        cornerRadius = CornerRadius(5f, 5f)
+                    )
+                }
+                // Glow + hot core needle
+                val nx = w * normNow.coerceIn(0f, 1f)
+                drawRoundRect(
+                    color = statusColor.copy(alpha = 0.35f),
+                    topLeft = Offset(nx - 8f, -2f),
+                    size = Size(16f, h + 4f),
+                    cornerRadius = CornerRadius(8f, 8f)
+                )
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color.White, statusColor)),
+                    topLeft = Offset(nx - 4f, 0f),
+                    size = Size(8f, h),
+                    cornerRadius = CornerRadius(4f, 4f)
+                )
                 drawLine(
-                    color = Color.White.copy(alpha = 0.55f),
-                    start = Offset(midX, 0f),
-                    end = Offset(midX, h),
-                    strokeWidth = 1.dp.toPx()
-                )
-            }
-
-            // Animated needle / indicator pill
-            androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val totalWidth = maxWidth
-                val normPos = ((animatedCorr + 1.0f) / 2.0f).coerceIn(0f, 1f)
-                val indicatorOffset = (totalWidth - 8.dp) * normPos
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = indicatorOffset)
-                        .width(8.dp)
-                        .fillMaxHeight()
-                        .clip(GlassTokens.radiusPill)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.White, statusColor)
-                            )
-                        )
-                        .border(0.6.dp, Color.White, GlassTokens.radiusPill)
+                    color = Color.White.copy(alpha = 0.95f),
+                    start = Offset(nx, 1f), end = Offset(nx, h - 1f),
+                    strokeWidth = 1.5f
                 )
             }
         }
@@ -3102,78 +3471,134 @@ fun CrestFactorBadge(
         modifier = modifier
             .fillMaxWidth()
             .clip(GlassTokens.radiusMd)
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF1B1D26), Color(0xFF121319))
-                )
-            )
+            .background(Color(0xFF07080C))
             .border(
                 0.8.dp,
                 Brush.linearGradient(
-                    listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.05f))
+                    listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.05f))
                 ),
                 GlassTokens.radiusMd
             )
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1.1f)
-                    .padding(end = 8.dp)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "DYNAMIC RANGE (CREST FACTOR)",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = GlassTokens.TextSecondary,
-                    letterSpacing = 0.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .padding(end = 8.dp)
+                ) {
                     Text(
-                        text = if (peakDbfs <= -90f) "DR -- dB" else String.format("DR %.1f dB", crestFactorDb.coerceIn(0f, 30f)),
-                        fontSize = 15.sp,
+                        text = "DYNAMIC RANGE",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = ratingColor,
-                        maxLines = 1
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.6.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (peakDbfs <= -90f) "DR -- dB" else String.format("DR %.1f dB", crestFactorDb.coerceIn(0f, 30f)),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ratingColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(GlassTokens.radiusPill)
+                                .background(ratingColor.copy(alpha = 0.15f))
+                                .border(0.6.dp, ratingColor.copy(alpha = 0.5f), GlassTokens.radiusPill)
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = if (peakDbfs <= -90f) "Idle" else ratingText,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ratingColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.weight(0.9f),
+                    horizontalAlignment = Alignment.End
+                ) {
                     Text(
-                        text = if (peakDbfs <= -90f) "Idle" else ratingText,
+                        text = if (peakDbfs <= -90f) "Peak: -∞ dBFS" else String.format("Peak: %+.1f dBFS", peakDbfs),
                         fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (peakDbfs >= -0.1f) GlassTokens.IosRed else GlassTokens.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (rmsDbfs <= -90f) "RMS: -∞ dBFS" else String.format("RMS: %+.1f dBFS", rmsDbfs),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Normal,
                         color = GlassTokens.TextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-
-            Column(
-                modifier = Modifier.weight(0.9f),
-                horizontalAlignment = Alignment.End
-            ) {
-                Text(
-                    text = if (peakDbfs <= -90f) "Peak: -∞ dBFS" else String.format("Peak: %+.1f dBFS", peakDbfs),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (peakDbfs >= -0.1f) GlassTokens.IosRed else GlassTokens.TextPrimary,
-                    maxLines = 1
+            Spacer(modifier = Modifier.height(8.dp))
+            // Pro DR gauge 0..20dB with zone colors + glowing needle
+            Canvas(modifier = Modifier.fillMaxWidth().height(12.dp)) {
+                val w = size.width
+                val h = size.height
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.07f),
+                    topLeft = Offset(0f, 0f),
+                    size = Size(w, h),
+                    cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (rmsDbfs <= -90f) "RMS: -∞ dBFS" else String.format("RMS: %+.1f dBFS", rmsDbfs),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = GlassTokens.TextSecondary,
-                    maxLines = 1
+                // Zones: 0-6 red, 6-9 yellow, 9-14 green, 14-20 teal
+                val zones = listOf(
+                    0f to 0.3f to GlassTokens.IosRed,
+                    0.3f to 0.45f to GlassTokens.IosYellow,
+                    0.45f to 0.7f to GlassTokens.IosGreen,
+                    0.7f to 1f to GlassTokens.IosTeal
                 )
+                for ((range, c) in zones) {
+                    val (a, b) = range
+                    drawRect(
+                        color = c.copy(alpha = 0.30f),
+                        topLeft = Offset(w * a, 0f),
+                        size = Size(w * (b - a), h)
+                    )
+                }
+                val norm = (crestFactorDb.coerceIn(0f, 20f) / 20f).coerceIn(0f, 1f)
+                val nx = w * norm
+                drawRoundRect(
+                    color = ratingColor.copy(alpha = 0.35f),
+                    topLeft = Offset(nx - 9f, -3f),
+                    size = Size(18f, h + 6f),
+                    cornerRadius = CornerRadius(9f, 9f)
+                )
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color.White, ratingColor)),
+                    topLeft = Offset(nx - 4f, 0f),
+                    size = Size(8f, h),
+                    cornerRadius = CornerRadius(4f, 4f)
+                )
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("0 SQUASHED", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary.copy(alpha = 0.6f))
+                Text("20 OPEN", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary.copy(alpha = 0.6f))
             }
         }
     }
@@ -3251,7 +3676,9 @@ fun LufsLoudnessMeter(
                         text = deltaText,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = deltaColor
+                        color = deltaColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -3283,7 +3710,9 @@ fun LufsLoudnessMeter(
                             text = "${target.platform} (${target.targetLufs.toInt()})",
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.White else GlassTokens.TextPrimary
+                            color = if (isSelected) Color.White else GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -3310,32 +3739,39 @@ fun LufsLoudnessMeter(
                         text = if (metrics.integratedLufs <= -60f) "-∞ LUFS" else String.format("%.1f LUFS", metrics.integratedLufs),
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (metrics.integratedLufs > currentTarget.targetLufs + 0.5f) GlassTokens.IosOrange else GlassTokens.TextPrimary
+                        color = if (metrics.integratedLufs > currentTarget.targetLufs + 0.5f) GlassTokens.IosOrange else GlassTokens.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
                 // True Peak Meter & Loudness Range
-                Column(horizontalAlignment = Alignment.End) {
+                Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
                     val tp = metrics.truePeakDbtp
                     val isTpClipping = tp > currentTarget.maxTruePeakDbtp
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "True Peak: ",
                             fontSize = 11.sp,
-                            color = GlassTokens.TextSecondary
+                            color = GlassTokens.TextSecondary,
+                            maxLines = 1
                         )
                         Text(
                             text = if (tp <= -60f) "-∞ dBTP" else String.format("%+.1f dBTP", tp),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isTpClipping) GlassTokens.IosRed else GlassTokens.TextPrimary
+                            color = if (isTpClipping) GlassTokens.IosRed else GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = String.format("LRA: %.1f LU (Range)", metrics.loudnessRangeLu),
                         fontSize = 11.sp,
-                        color = GlassTokens.IosTeal
+                        color = GlassTokens.IosTeal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -3357,29 +3793,100 @@ fun LufsLoudnessMeter(
                     Text(
                         text = "Momentary (400ms): ",
                         fontSize = 11.sp,
-                        color = GlassTokens.TextSecondary
+                        color = GlassTokens.TextSecondary,
+                        maxLines = 1
                     )
                     Text(
                         text = if (metrics.momentaryLufs <= -60f) "-∞" else String.format("%.1f", metrics.momentaryLufs),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = GlassTokens.TextPrimary
+                        color = GlassTokens.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Row {
+                Row(modifier = Modifier.padding(start = 8.dp)) {
                     Text(
                         text = "Short-Term (3s): ",
                         fontSize = 11.sp,
-                        color = GlassTokens.TextSecondary
+                        color = GlassTokens.TextSecondary,
+                        maxLines = 1
                     )
                     Text(
                         text = if (metrics.shortTermLufs <= -60f) "-∞" else String.format("%.1f", metrics.shortTermLufs),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = GlassTokens.TextPrimary
+                        color = GlassTokens.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Pro loudness bar meters with streaming-target marker (-40..-6 LUFS window)
+            @Composable
+            fun LufsBar(label: String, value: Float, accent: Color) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary)
+                        Text(
+                            text = if (value <= -60f) "-∞" else String.format("%.1f LUFS", value),
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Canvas(modifier = Modifier.fillMaxWidth().height(10.dp)) {
+                        val lo = -40f
+                        val hi = -6f
+                        fun xFor(lufs: Float): Float {
+                            val n = ((lufs - lo) / (hi - lo)).coerceIn(0f, 1f)
+                            return n * size.width
+                        }
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.07f),
+                            topLeft = Offset(0f, 0f),
+                            size = Size(size.width, size.height),
+                            cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                        )
+                        val vw = xFor(value)
+                        if (vw > 2f) {
+                            drawRoundRect(
+                                color = accent.copy(alpha = 0.30f),
+                                topLeft = Offset(0f, -2f),
+                                size = Size(vw, size.height + 4f),
+                                cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                            )
+                            drawRoundRect(
+                                brush = Brush.horizontalGradient(
+                                    listOf(accent.copy(alpha = 0.6f), accent, Color.White.copy(alpha = 0.85f)),
+                                    startX = 0f, endX = vw
+                                ),
+                                topLeft = Offset(0f, 0f),
+                                size = Size(vw, size.height),
+                                cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                            )
+                        }
+                        val tx = xFor(currentTarget.targetLufs)
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.9f),
+                            start = Offset(tx, -3f),
+                            end = Offset(tx, size.height + 3f),
+                            strokeWidth = 2.dp.toPx()
+                        )
+                    }
+                }
+            }
+            LufsBar("MOMENTARY", metrics.momentaryLufs, GlassTokens.IosTeal)
+            Spacer(modifier = Modifier.height(6.dp))
+            LufsBar("SHORT-TERM 3s", metrics.shortTermLufs, GlassTokens.IosBlue)
+            Spacer(modifier = Modifier.height(6.dp))
+            LufsBar("INTEGRATED", metrics.integratedLufs, GlassTokens.IosGreen)
         }
     }
 }
@@ -3467,13 +3974,18 @@ fun DynamicDeEsserBadge(
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = GlassTokens.TextSecondary,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                     Text(
                         text = if (currentReductionDb > 0.05f) String.format("-%.1f dB GR", currentReductionDb) else "0.0 dB",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (currentReductionDb > 0.05f) GlassTokens.IosPurple else GlassTokens.TextSecondary
+                        color = if (currentReductionDb > 0.05f) GlassTokens.IosPurple else GlassTokens.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -3591,7 +4103,9 @@ fun TestToneGeneratorCard(
                             text = "MUTE TONE",
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = GlassTokens.IosRed
+                            color = GlassTokens.IosRed,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -3625,7 +4139,9 @@ fun TestToneGeneratorCard(
                             text = mode.displayName,
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) (if (mode == TestToneMode.OFF) Color.White else Color.Black) else GlassTokens.TextPrimary
+                            color = if (isSelected) (if (mode == TestToneMode.OFF) Color.White else Color.Black) else GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -3646,7 +4162,9 @@ fun TestToneGeneratorCard(
                         text = "SYNTHESIZING: ${currentMode.description}",
                         fontSize = 11.sp,
                         color = GlassTokens.IosOrange,
-                        lineHeight = 15.sp
+                        lineHeight = 15.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -3715,7 +4233,9 @@ fun MasteringSubCutCard(
                         text = currentFilter.slope,
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = GlassTokens.IosTeal
+                        color = GlassTokens.IosTeal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -3744,9 +4264,11 @@ fun MasteringSubCutCard(
                     ) {
                         Text(
                             text = filter.label,
-                            fontSize = 11.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color.Black else GlassTokens.TextPrimary
+                            color = if (isSelected) Color.Black else GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -3946,7 +4468,9 @@ fun LissajousVectorScope(
                             text = "ANTI-PHASE",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = GlassTokens.IosRed
+                            color = GlassTokens.IosRed,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 } else {
@@ -3961,7 +4485,9 @@ fun LissajousVectorScope(
                             text = "PHASE: ${String.format("%+.2f", phaseCorrelation)}",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = GlassTokens.IosGreen
+                            color = GlassTokens.IosGreen,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -4035,32 +4561,54 @@ fun LissajousVectorScope(
                         strokeWidth = 0.8f
                     )
 
-                    // 3. Phosphor Vector Cloud
+                    // 3. Phosphor Vector Cloud with bloom (glow pass + hot core pass)
                     val numPoints = points.size / 2
                     if (numPoints > 1) {
                         val phosphorColor = if (isAntiPhase) Color(0xFFFF453A) else Color(0xFF00F5D4)
+                        // Bloom under-glow: thick soft trail
+                        for (i in 1 until numPoints step 2) {
+                            val px = points[i * 2]
+                            val py = points[i * 2 + 1]
+                            val screenX = cx + px * radius
+                            val screenY = cy - py * radius
+                            val prevX = cx + points[(i - 1) * 2] * radius
+                            val prevY = cy - points[(i - 1) * 2 + 1] * radius
+                            val progress = i.toFloat() / numPoints.toFloat()
+                            drawLine(
+                                color = phosphorColor.copy(alpha = 0.10f + progress * 0.18f),
+                                start = Offset(prevX, prevY),
+                                end = Offset(screenX, screenY),
+                                strokeWidth = 5f
+                            )
+                        }
+                        // Core trail + phosphor dots
                         for (i in 0 until numPoints) {
                             val px = points[i * 2]
                             val py = points[i * 2 + 1]
                             val screenX = cx + px * radius
                             val screenY = cy - py * radius
                             val progress = i.toFloat() / numPoints.toFloat()
-                            val alpha = 0.15f + progress * 0.75f
-                            drawCircle(
-                                color = phosphorColor.copy(alpha = alpha),
-                                radius = if (i == numPoints - 1) 3.5f else 1.8f,
-                                center = Offset(screenX, screenY)
-                            )
+                            val alpha = 0.20f + progress * 0.75f
                             if (i > 0) {
                                 val prevX = cx + points[(i - 1) * 2] * radius
                                 val prevY = cy - points[(i - 1) * 2 + 1] * radius
                                 drawLine(
-                                    color = phosphorColor.copy(alpha = alpha * 0.6f),
+                                    color = phosphorColor.copy(alpha = alpha * 0.75f),
                                     start = Offset(prevX, prevY),
                                     end = Offset(screenX, screenY),
-                                    strokeWidth = 1.2f
+                                    strokeWidth = 1.6f
                                 )
                             }
+                            drawCircle(
+                                color = Color.White.copy(alpha = alpha * 0.55f),
+                                radius = if (i == numPoints - 1) 2.6f else 1.5f,
+                                center = Offset(screenX, screenY)
+                            )
+                            drawCircle(
+                                color = phosphorColor.copy(alpha = alpha),
+                                radius = if (i == numPoints - 1) 4.2f else 2.2f,
+                                center = Offset(screenX, screenY)
+                            )
                         }
                     }
                 }
@@ -4121,7 +4669,7 @@ fun LissajousVectorScope(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Pure Mono = Vertical Line | Wide Stereo = Ellipse | Anti-Phase = Horizontal",
+                    text = "Mono = vertical • Wide = ellipse • Anti-phase = horizontal",
                     fontSize = 10.sp,
                     color = GlassTokens.TextSecondary,
                     maxLines = 1,
@@ -4221,7 +4769,7 @@ fun TransientDesignerCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     // Live Attack Activity LED
                     Box(
                         modifier = Modifier
@@ -4237,14 +4785,18 @@ fun TransientDesignerCard(
                         text = "ATTACK SCULPT (τ = 1.5ms)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = GlassTokens.TextPrimary
+                        color = GlassTokens.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
                     text = String.format("%+.1f dB", attackGainDb),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (attackPercent != 0f) Color(0xFF00FFCC) else GlassTokens.TextSecondary
+                    color = if (attackPercent != 0f) Color(0xFF00FFCC) else GlassTokens.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -4268,7 +4820,7 @@ fun TransientDesignerCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     // Live Sustain Activity LED
                     Box(
                         modifier = Modifier
@@ -4284,14 +4836,18 @@ fun TransientDesignerCard(
                         text = "SUSTAIN TAIL (τ = 180ms)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = GlassTokens.TextPrimary
+                        color = GlassTokens.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
                     text = String.format("%+.1f dB", sustainGainDb),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (sustainPercent != 0f) GlassTokens.IosOrange else GlassTokens.TextSecondary
+                    color = if (sustainPercent != 0f) GlassTokens.IosOrange else GlassTokens.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -4385,7 +4941,9 @@ fun HarmonicSaturationCard(
                         text = "THD: ${String.format("%.2f", thdPercent)}%",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (thdPercent > 0.05f) GlassTokens.IosOrange else GlassTokens.TextSecondary
+                        color = if (thdPercent > 0.05f) GlassTokens.IosOrange else GlassTokens.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -4417,7 +4975,9 @@ fun HarmonicSaturationCard(
                             text = type.label,
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color.Black else GlassTokens.TextPrimary
+                            color = if (isSelected) Color.Black else GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -4439,13 +4999,17 @@ fun HarmonicSaturationCard(
                         text = "${selectedType.label} • ${selectedType.order}",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = GlassTokens.IosOrange
+                        color = GlassTokens.IosOrange,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = selectedType.description,
                         fontSize = 10.sp,
                         color = GlassTokens.TextSecondary,
-                        lineHeight = 14.sp
+                        lineHeight = 14.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -4529,6 +5093,635 @@ fun FletcherMunsonBadge(
                     checkedTrackColor = GlassTokens.IosIndigo
                 )
             )
+        }
+    }
+}
+
+/**
+ * Pro Studio mix workflow: A/B/C/D snapshots + undo.
+ * One-tap full-chain recall for mix comparison without re-dialing sliders.
+ */
+@Composable
+fun ProMixWorkflowCard(
+    snapshots: List<com.example.model.MixSnapshot?>,
+    activeIndex: Int,
+    canUndo: Boolean,
+    onSave: (Int) -> Unit,
+    onRecall: (Int) -> Unit,
+    onClear: (Int) -> Unit,
+    onUndo: () -> Unit,
+    reduceGlass: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusSm)
+            .background(Color.White.copy(alpha = 0.04f))
+            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusSm)
+            .padding(12.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "MIX SNAPSHOTS A/B/C/D",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GlassTokens.TextSecondary
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(if (canUndo) GlassTokens.IosBlue.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.05f))
+                        .border(0.8.dp, if (canUndo) GlassTokens.IosBlue else GlassTokens.IosSeparator, GlassTokens.radiusPill)
+                        .clickable(enabled = canUndo) { onUndo() }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = if (canUndo) "↩ UNDO" else "NO UNDO",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canUndo) GlassTokens.IosBlue else GlassTokens.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Text(
+                text = "Capture the full chain (EQ, dynamics, reverb, saturation, monitors) and flip instantly.",
+                fontSize = 11.sp,
+                color = GlassTokens.TextSecondary,
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val labels = listOf("A", "B", "C", "D")
+                labels.forEachIndexed { idx, label ->
+                    val filled = snapshots.getOrNull(idx) != null
+                    val active = activeIndex == idx
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(GlassTokens.radiusSm)
+                                .background(
+                                    when {
+                                        active -> GlassTokens.IosTeal.copy(alpha = 0.3f)
+                                        filled -> GlassTokens.IosBlue.copy(alpha = 0.18f)
+                                        else -> Color.White.copy(alpha = 0.05f)
+                                    }
+                                )
+                                .border(
+                                    0.8.dp,
+                                    when {
+                                        active -> GlassTokens.IosTeal
+                                        filled -> GlassTokens.IosBlue.copy(alpha = 0.6f)
+                                        else -> GlassTokens.IosSeparator
+                                    },
+                                    GlassTokens.radiusSm
+                                )
+                                .clickable {
+                                    if (filled) onRecall(idx) else onSave(idx)
+                                }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (filled || active) Color.White else GlassTokens.TextSecondary
+                            )
+                        }
+                        Text(
+                            text = when {
+                                active && filled -> "Active"
+                                filled -> "Recall"
+                                else -> "Save"
+                            },
+                            fontSize = 9.sp,
+                            color = GlassTokens.TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                        if (filled) {
+                            Text(
+                                text = "hold to clear",
+                                fontSize = 8.sp,
+                                color = GlassTokens.TextSecondary.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .padding(top = 1.dp)
+                                    .clickable { onClear(idx) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pro Studio QC: sticky true-peak hold + clip counter + loudness auto-match
+ * readout with offline WAV bounce action.
+ *
+ * The bounce button prints the loaded vault track when one is selected
+ * (two-pass measure -> match -> verify), otherwise a 5s chain-audition tone.
+ */
+@Composable
+fun QcPeakHoldCard(
+    holdDbtp: Float,
+    clipCount: Int,
+    integratedLufs: Float,
+    targetLufs: Float,
+    autoGainDb: Float,
+    isBouncing: Boolean,
+    lastBounceInfo: String?,
+    onReset: () -> Unit,
+    onBounce: () -> Unit,
+    modifier: Modifier = Modifier,
+    hasLocalTrack: Boolean = false,
+    trackTitle: String? = null,
+    bitDepth: com.example.audio.BounceBitDepth = com.example.audio.BounceBitDepth.PCM_16,
+    onSelectBitDepth: ((com.example.audio.BounceBitDepth) -> Unit)? = null,
+    bounceProgress: Float? = null,
+    verifyText: String? = null
+) {
+    val over = holdDbtp > -1.0f
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusSm)
+            .background(if (over) GlassTokens.IosRed.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.04f))
+            .border(
+                0.8.dp,
+                if (over) GlassTokens.IosRed.copy(alpha = 0.5f) else GlassTokens.IosSeparator,
+                GlassTokens.radiusSm
+            )
+            .padding(12.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "QC PEAK-HOLD & CLIP COUNTER",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (over) GlassTokens.IosRed else GlassTokens.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(GlassTokens.radiusPill)
+                        .background(Color.White.copy(alpha = 0.06f))
+                        .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusPill)
+                        .clickable { onReset() }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text("RESET", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GlassTokens.TextSecondary)
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Peak hold: ${String.format(java.util.Locale.US, "%.1f", holdDbtp)} dBTP",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (over) GlassTokens.IosRed else GlassTokens.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                )
+                Text(
+                    text = "Overs: $clipCount",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (clipCount > 0) GlassTokens.IosOrange else GlassTokens.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = "Integrated ${String.format(java.util.Locale.US, "%.1f", integratedLufs)} LUFS → target ${String.format(java.util.Locale.US, "%.0f", targetLufs)} LUFS • auto-match ${String.format(java.util.Locale.US, "%+.1f", autoGainDb)} dB (true-peak safe)",
+                fontSize = 11.sp,
+                color = GlassTokens.TextSecondary,
+                modifier = Modifier.padding(top = 4.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (onSelectBitDepth != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "BOUNCE FORMAT",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    com.example.audio.BounceBitDepth.values().forEach { depth ->
+                        val selected = depth == bitDepth
+                        Box(
+                            modifier = Modifier
+                                .clip(GlassTokens.radiusPill)
+                                .background(if (selected) GlassTokens.IosTeal.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.05f))
+                                .border(
+                                    0.8.dp,
+                                    if (selected) GlassTokens.IosTeal else GlassTokens.IosSeparator,
+                                    GlassTokens.radiusPill
+                                )
+                                .clickable { onSelectBitDepth(depth) }
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "${depth.bits}-bit WAV",
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) GlassTokens.IosTeal else GlassTokens.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+            Button(
+                onClick = onBounce,
+                enabled = !isBouncing,
+                colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosTeal),
+                shape = GlassTokens.radiusPill,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            ) {
+                Text(
+                    text = when {
+                        isBouncing -> "Bouncing…"
+                        hasLocalTrack -> "Bounce track (${bitDepth.bits}-bit WAV)"
+                        else -> "Bounce 5s chain-audition tone"
+                    },
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (hasLocalTrack && trackTitle != null) {
+                Text(
+                    text = "Source: $trackTitle • monitors & M/S audition excluded from print",
+                    fontSize = 10.sp,
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (isBouncing && bounceProgress != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(GlassTokens.radiusPill)
+                        .background(Color.White.copy(alpha = 0.08f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(bounceProgress.coerceIn(0f, 1f))
+                            .height(6.dp)
+                            .clip(GlassTokens.radiusPill)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(GlassTokens.IosTeal, GlassTokens.IosBlue)
+                                )
+                            )
+                    )
+                }
+                Text(
+                    text = "Rendering ${(bounceProgress * 100).toInt()}% (measure → match → print)",
+                    fontSize = 10.sp,
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (verifyText != null) {
+                Text(
+                    text = verifyText,
+                    fontSize = 10.sp,
+                    color = GlassTokens.IosTeal,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(top = 4.dp),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (lastBounceInfo != null) {
+                Text(
+                    text = lastBounceInfo,
+                    fontSize = 10.sp,
+                    color = GlassTokens.TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Pro Studio 3-band multiband compressor card (FabFilter Pro-MB style).
+ * Subtractive LR4 crossover, per-band threshold/ratio with measured GR,
+ * linked attack/release, knee, sidechain HPF and per-band solo.
+ * Player-only DSP - disclosed inline since there is no OS mapping.
+ */
+@Composable
+fun MultibandDynamicsCard(
+    enabled: Boolean,
+    onToggleEnabled: (Boolean) -> Unit,
+    xoverLowHz: Float,
+    onXoverLowChange: (Float) -> Unit,
+    xoverHighHz: Float,
+    onXoverHighChange: (Float) -> Unit,
+    threshLowDb: Float,
+    threshMidDb: Float,
+    threshHighDb: Float,
+    onThreshChange: (Int, Float) -> Unit,
+    ratioLow: Float,
+    ratioMid: Float,
+    ratioHigh: Float,
+    onRatioChange: (Int, Float) -> Unit,
+    attackMs: Float,
+    onAttackChange: (Float) -> Unit,
+    releaseMs: Float,
+    onReleaseChange: (Float) -> Unit,
+    kneeDb: Float,
+    onKneeChange: (Float) -> Unit,
+    sidechainHpfHz: Int,
+    onSidechainHpfChange: (Int) -> Unit,
+    soloLow: Boolean,
+    soloMid: Boolean,
+    soloHigh: Boolean,
+    onSoloChange: (Int, Boolean) -> Unit,
+    grLowDb: Float,
+    grMidDb: Float,
+    grHighDb: Float,
+    modifier: Modifier = Modifier,
+    reduceGlass: Boolean = false
+) {
+    val bandNames = listOf("LOW", "MID", "HIGH")
+    val bandThresh = listOf(threshLowDb, threshMidDb, threshHighDb)
+    val bandRatio = listOf(ratioLow, ratioMid, ratioHigh)
+    val bandGr = listOf(grLowDb, grMidDb, grHighDb)
+    val bandSolo = listOf(soloLow, soloMid, soloHigh)
+    val bandTint = listOf(GlassTokens.IosOrange, GlassTokens.IosTeal, GlassTokens.IosBlue)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(GlassTokens.radiusMd)
+            .background(Color(0xFF07080C))
+            .border(0.8.dp, GlassTokens.IosSeparator, GlassTokens.radiusMd)
+            .padding(14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = "MULTIBAND DYNAMICS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GlassTokens.TextSecondary,
+                        letterSpacing = 0.6.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "3-band LR4 • per-band GR • solo",
+                        fontSize = 10.sp,
+                        color = GlassTokens.TextSecondary.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggleEnabled,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = GlassTokens.IosOrange
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Player-only stage: Android's DynamicsProcessing is single-band, so this shapes Daydream's player (and bounces), not system audio.",
+                fontSize = 10.sp,
+                color = GlassTokens.TextSecondary.copy(alpha = 0.8f),
+                lineHeight = 14.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            LiquidSlider(
+                title = "Crossover Low/Mid",
+                value = xoverLowHz,
+                onValueChange = onXoverLowChange,
+                valueRange = 60f..800f,
+                unit = "Hz",
+                technicalValue = "LR4 low edge",
+                showTechnical = true,
+                accentColor = GlassTokens.IosOrange,
+                reduceGlass = reduceGlass
+            )
+            LiquidSlider(
+                title = "Crossover Mid/High",
+                value = xoverHighHz,
+                onValueChange = onXoverHighChange,
+                valueRange = 1000f..12000f,
+                unit = "Hz",
+                technicalValue = "LR4 high edge",
+                showTechnical = true,
+                accentColor = GlassTokens.IosBlue,
+                reduceGlass = reduceGlass
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+            bandNames.forEachIndexed { idx, name ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$name BAND",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bandTint[idx],
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "GR -${String.format(java.util.Locale.US, "%.1f", bandGr[idx])} dB",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (bandGr[idx] > 0.1f) bandTint[idx] else GlassTokens.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(GlassTokens.radiusPill)
+                            .background(if (bandSolo[idx]) bandTint[idx].copy(alpha = 0.3f) else Color.White.copy(alpha = 0.05f))
+                            .border(
+                                0.8.dp,
+                                if (bandSolo[idx]) bandTint[idx] else GlassTokens.IosSeparator,
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onSoloChange(idx, !bandSolo[idx]) }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (bandSolo[idx]) "SOLO ON" else "SOLO",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (bandSolo[idx]) bandTint[idx] else GlassTokens.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                LiquidSlider(
+                    title = "$name Threshold",
+                    value = bandThresh[idx],
+                    onValueChange = { onThreshChange(idx, it) },
+                    valueRange = -40f..0f,
+                    unit = "dB",
+                    showTechnical = false,
+                    accentColor = bandTint[idx],
+                    reduceGlass = reduceGlass
+                )
+                LiquidSlider(
+                    title = "$name Ratio",
+                    value = bandRatio[idx],
+                    onValueChange = { onRatioChange(idx, it) },
+                    valueRange = 1f..10f,
+                    unit = ":1",
+                    showTechnical = false,
+                    accentColor = bandTint[idx],
+                    reduceGlass = reduceGlass
+                )
+                if (idx < 2) {
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 6.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            LiquidSlider(
+                title = "Attack (linked)",
+                value = attackMs,
+                onValueChange = onAttackChange,
+                valueRange = 1f..100f,
+                unit = "ms",
+                showTechnical = false,
+                accentColor = GlassTokens.IosOrange,
+                reduceGlass = reduceGlass
+            )
+            LiquidSlider(
+                title = "Release (linked)",
+                value = releaseMs,
+                onValueChange = onReleaseChange,
+                valueRange = 10f..500f,
+                unit = "ms",
+                showTechnical = false,
+                accentColor = GlassTokens.IosOrange,
+                reduceGlass = reduceGlass
+            )
+            LiquidSlider(
+                title = "Knee",
+                value = kneeDb,
+                onValueChange = onKneeChange,
+                valueRange = 0f..12f,
+                unit = "dB",
+                technicalValue = if (kneeDb < 0.5f) "Hard knee" else "Soft knee",
+                showTechnical = true,
+                accentColor = GlassTokens.IosTeal,
+                reduceGlass = reduceGlass
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "SIDECHAIN HIGHPASS",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = GlassTokens.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(0 to "Off", 80 to "80 Hz", 150 to "150 Hz").forEach { (hz, label) ->
+                    val selected = sidechainHpfHz == hz
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(GlassTokens.radiusPill)
+                            .background(if (selected) GlassTokens.IosTeal.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.05f))
+                            .border(
+                                0.8.dp,
+                                if (selected) GlassTokens.IosTeal else GlassTokens.IosSeparator,
+                                GlassTokens.radiusPill
+                            )
+                            .clickable { onSidechainHpfChange(hz) }
+                            .padding(vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 11.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) GlassTokens.IosTeal else GlassTokens.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
         }
     }
 }

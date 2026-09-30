@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -174,6 +175,7 @@ fun SimpleModeScreen(
                             }
                             Row(
                                 modifier = Modifier
+                                    .widthIn(max = 230.dp)
                                     .clip(GlassTokens.radiusPill)
                                     .background(chipColor.copy(alpha = 0.16f))
                                     .border(0.8.dp, chipColor.copy(alpha = 0.5f), GlassTokens.radiusPill)
@@ -192,7 +194,10 @@ fun SimpleModeScreen(
                                     text = preset.name,
                                     fontSize = 12.sp,
                                     color = GlassTokens.TextPrimary,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Icon(
@@ -490,7 +495,9 @@ fun SimpleModeScreen(
         // System Audio Hook Status & Output Device Chips
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -514,7 +521,9 @@ fun SimpleModeScreen(
                         text = uiState.currentDevice.displayName,
                         fontSize = 12.sp,
                         color = GlassTokens.TextPrimary,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -561,7 +570,10 @@ fun SimpleModeScreen(
                             uiState.activeSystemSessions.isNotEmpty() -> GlassTokens.IosGreen
                             else -> GlassTokens.TextSecondary
                         },
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 240.dp)
                     )
                 }
             }
@@ -631,7 +643,9 @@ fun SimpleModeScreen(
                                 text = "🎧 Switch to ${uiState.devicePrompt.displayName}?",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.IosBlue
+                                color = GlassTokens.IosBlue,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = "Audio output change detected. Tap to auto-tune baseline Space & Punch.",
@@ -683,13 +697,17 @@ fun SimpleModeScreen(
                                 text = "✨ Active Fix: ${uiState.lastAppliedComplaint?.label ?: "Smart Tune"}",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.IosBlue
+                                color = GlassTokens.IosBlue,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = uiState.lastWizardFixSummary,
                                 fontSize = 12.sp,
                                 color = GlassTokens.TextSecondary,
-                                modifier = Modifier.padding(top = 2.dp)
+                                modifier = Modifier.padding(top = 2.dp),
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         IconButton(onClick = { viewModel.resetAllToFlat() }) {
@@ -799,7 +817,9 @@ fun SimpleModeScreen(
                                         text = if (uiState.isLofiMode) "0.85x • Reverb • Warble" else "1-Tap Chill",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (uiState.isLofiMode) GlassTokens.IosOrange else GlassTokens.TextSecondary
+                                        color = if (uiState.isLofiMode) GlassTokens.IosOrange else GlassTokens.TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -809,6 +829,35 @@ fun SimpleModeScreen(
                                 color = GlassTokens.TextSecondary,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
+                            // Honest path limit: tempo slowdown is a player-side
+                            // PlaybackParams effect - Android gives no API to slow
+                            // another app's audio (and capturing it would double-play
+                            // it, since the source can't be muted per-app).
+                            if (uiState.isExternalPlaybackActive && !uiState.isPlaying) {
+                                Text(
+                                    text = "Tempo slowdown works in Daydream's player only — YouTube keeps its own speed. Tone + reverb parts still apply system-wide.",
+                                    fontSize = 11.sp,
+                                    color = GlassTokens.IosOrange,
+                                    lineHeight = 15.sp,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        viewModel.selectTrack(0)
+                                        if (!uiState.isLofiMode) viewModel.toggleLofiMode()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosOrange),
+                                    shape = GlassTokens.radiusPill
+                                ) {
+                                    Text(
+                                        text = "Preview Lofi on demo track",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
                         }
 
                         Switch(

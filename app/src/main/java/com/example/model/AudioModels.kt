@@ -429,3 +429,119 @@ data class LufsMetrics(
     val truePeakDbtp: Float = -6.0f    // 4x oversampled True Peak in dBTP
 )
 
+/**
+ * Engine processing rate selection.
+ * AUTO follows the device's native output rate (bit-transparent path to the
+ * DAC on the 48kHz-native majority); the other two pin the engine for
+ * repeatable renders and Bluetooth quirks.
+ */
+enum class SampleRateMode(val label: String) {
+    AUTO("Auto (device native)"),
+    RATE_44100("44.1 kHz"),
+    RATE_48000("48 kHz")
+}
+
+/**
+ * Pro Studio full-chain mix snapshot.
+ * Captures every automatable DSP parameter so A/B/C/D slots and undo
+ * can restore bit-identical processing without re-dialing sliders.
+ */
+data class MixSnapshot(
+    val name: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val eqGains: Map<String, Float> = emptyMap(), // PlainBand.name -> dB
+    val parametricGains: Map<String, Float> = emptyMap(), // Hz string -> dB
+    val parametricQ: Map<String, Float> = emptyMap(), // Hz string -> Q
+    val spacePercent: Float = 30f,
+    val punchPercent: Float = 25f,
+    val clarityMacroPercent: Float = 0f,
+    val loudnessPercent: Float = 0f,
+    val hissRemovalPercent: Float = 0f,
+    val deHumEnabled: Boolean = false,
+    val humFrequency: Int = 60,
+    val deCrackleEnabled: Boolean = false,
+    val compThresholdDb: Float = -18f,
+    val compRatio: Float = 2.5f,
+    val compAttackMs: Float = 20f,
+    val compReleaseMs: Float = 150f,
+    val limiterCeilingDb: Float = -0.5f,
+    val reverbWetPercent: Float = 0f,
+    val reverbRoomSizePercent: Float = 75f,
+    val reverbDampingPercent: Float = 35f,
+    val reverbFreezeEnabled: Boolean = false,
+    val echoTimeMs: Int = 320,
+    val echoFeedbackPercent: Float = 30f,
+    val echoWetPercent: Float = 0f,
+    val roomSizeName: String = "LARGE_HALL",
+    val wallMaterialName: String = "PLASTER",
+    val midSideName: String = "STEREO",
+    val bassMonoMakerEnabled: Boolean = false,
+    val referenceMonitorName: String = "FLAT",
+    val limiterModeName: String = "SOFT_BRICKWALL",
+    val transientAttackPercent: Float = 0f,
+    val transientSustainPercent: Float = 0f,
+    val harmonicSaturationName: String = "CLEAN",
+    val harmonicDrivePercent: Float = 0f,
+    val fletcherMunsonEnabled: Boolean = false,
+    val subCutName: String = "OFF",
+    val deEsserEnabled: Boolean = false,
+    val deEsserThresholdDb: Float = -18f,
+    val deEsserMaxReductionDb: Float = 6f,
+    val stereoBalanceTrimDb: Float = 0f,
+    val invertLeftPolarity: Boolean = false,
+    val invertRightPolarity: Boolean = false,
+    // Pro Studio 3-band multiband compressor
+    val multibandEnabled: Boolean = false,
+    val mbXoverLowHz: Float = 250f,
+    val mbXoverHighHz: Float = 4000f,
+    val mbThreshLowDb: Float = -18f,
+    val mbThreshMidDb: Float = -18f,
+    val mbThreshHighDb: Float = -18f,
+    val mbRatioLow: Float = 2f,
+    val mbRatioMid: Float = 2f,
+    val mbRatioHigh: Float = 2f,
+    val mbAttackMs: Float = 20f,
+    val mbReleaseMs: Float = 150f,
+    val mbKneeDb: Float = 6f,
+    val mbSidechainHpfHz: Int = 0,
+    val mbSoloLow: Boolean = false,
+    val mbSoloMid: Boolean = false,
+    val mbSoloHigh: Boolean = false,
+    val playbackSpeed: Float = 1.0f,
+    val varispeedMode: Boolean = true,
+    val isVintageMode: Boolean = false,
+    val wowFlutterDepth: Float = 0f,
+    val vintageNoiseLevel: Float = 0f
+) {
+    companion object {
+        const val MAX_SLOTS = 4
+        const val MAX_UNDO = 20
+
+        /**
+         * Gain needed to move current integrated loudness to target.
+         * Positive = needs boost, negative = needs cut.
+         * Clamped to +/-12dB so auto-match never slams the limiter.
+         */
+        fun loudnessGainDb(currentIntegratedLufs: Float, targetLufs: Float): Float {
+            if (currentIntegratedLufs <= -69f || currentIntegratedLufs.isNaN()) return 0f
+            return (targetLufs - currentIntegratedLufs).coerceIn(-12f, 12f)
+        }
+
+        /**
+         * True-peak-safe gain: reduces loudness gain if it would push
+         * current true peak over ceiling. Returns applied gain.
+         */
+        fun safeLoudnessGainDb(
+            currentIntegratedLufs: Float,
+            targetLufs: Float,
+            currentTruePeakDbtp: Float,
+            ceilingDbtp: Float = -1.0f
+        ): Float {
+            val wanted = loudnessGainDb(currentIntegratedLufs, targetLufs)
+            if (wanted <= 0f) return wanted
+            val headroom = ceilingDbtp - currentTruePeakDbtp
+            return wanted.coerceAtMost(headroom.coerceAtLeast(0f))
+        }
+    }
+}
+

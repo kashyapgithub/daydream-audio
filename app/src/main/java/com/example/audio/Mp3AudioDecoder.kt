@@ -23,8 +23,9 @@ class Mp3AudioDecoder(private val filePath: String) {
 
     companion object {
         private const val TAG = "Mp3AudioDecoder"
-        private const val TARGET_SAMPLE_RATE = AudioEngine.SAMPLE_RATE // 44100
-        private const val RING_BUFFER_CAPACITY = 44100 * 4 // 4 seconds of stereo audio
+        // Output rate follows the engine's active rate (44.1/48kHz) so the
+        // decoded stream never needs a second resampling stage downstream.
+        private const val RING_BUFFER_CAPACITY = 48000 * 4 // 4 seconds at max rate
         private const val TIMEOUT_US = 5000L
     }
 
@@ -36,7 +37,9 @@ class Mp3AudioDecoder(private val filePath: String) {
     var currentPositionMs: Long = 0L
         private set
 
-    private var sourceSampleRate: Int = TARGET_SAMPLE_RATE
+    private val targetSampleRate: Int get() = AudioEngine.globalSampleRate
+
+    private var sourceSampleRate: Int = AudioEngine.SAMPLE_RATE
     private var channelCount: Int = 2
     private var isEos = false
 
@@ -95,7 +98,7 @@ class Mp3AudioDecoder(private val filePath: String) {
         val mime = trackFormat.getString(MediaFormat.KEY_MIME) ?: "audio/mpeg"
         sourceSampleRate = if (trackFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
             trackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        } else TARGET_SAMPLE_RATE
+        } else targetSampleRate
 
         channelCount = if (trackFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
             trackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
@@ -116,6 +119,19 @@ class Mp3AudioDecoder(private val filePath: String) {
 
         // Pre-fill the ring buffer
         pumpDecoder()
+    }
+
+    /**
+     * True when the decoder has hit end-of-stream AND the ring buffer is fully
+     * drained. Unlike [readStereoSamples], this never loops - it is the
+     * termination signal for offline bounce renders.
+     */
+    fun isDrained(): Boolean {
+        if (!isInitialized) return true
+        pumpDecoder()
+        synchronized(lock) {
+            return isEos && availableSamples == 0
+        }
     }
 
     /**
@@ -142,7 +158,7 @@ class Mp3AudioDecoder(private val filePath: String) {
 
         // Update approximate position based on played samples
         if (durationMs > 0) {
-            val deltaMs = (samplesRead * 1000L) / TARGET_SAMPLE_RATE
+            val deltaMs = (samplesRead * 1000L) / targetSampleRate
             currentPositionMs = kotlin.math.min(durationMs, currentPositionMs + deltaMs)
         }
 
@@ -180,7 +196,7 @@ class Mp3AudioDecoder(private val filePath: String) {
         }
 
         if (durationMs > 0) {
-            val deltaMs = (framesRead * 1000L) / TARGET_SAMPLE_RATE
+            val deltaMs = (framesRead * 1000L) / targetSampleRate
             currentPositionMs = kotlin.math.min(durationMs, currentPositionMs + deltaMs)
         }
 
@@ -267,10 +283,10 @@ class Mp3AudioDecoder(private val filePath: String) {
         val numShorts = sizeBytes / 2
         if (numShorts <= 0) return
 
-        val step = if (sourceSampleRate == TARGET_SAMPLE_RATE) {
+        val step = if (sourceSampleRate == targetSampleRate) {
             1.0
         } else {
-            sourceSampleRate.toDouble() / TARGET_SAMPLE_RATE.toDouble()
+            sourceSampleRate.toDouble() / targetSampleRate.toDouble()
         }
 
         var sampleIdx = 0

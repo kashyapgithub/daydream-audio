@@ -28,6 +28,12 @@ class LocalTrackManager(private val context: Context) {
         private const val PREFS_NAME = "daydream_local_tracks_prefs"
         private const val KEY_TRACKS_JSON = "saved_local_tracks_json"
         private const val DIR_NAME = "local_audio"
+        val SUPPORTED_EXTENSIONS = setOf("mp3", "wav", "flac", "m4a", "aac", "ogg", "opus", "mp4")
+    }
+
+    fun isSupportedAudioFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in SUPPORTED_EXTENSIONS
     }
 
     private val storageDir: File by lazy {
@@ -81,8 +87,9 @@ class LocalTrackManager(private val context: Context) {
     suspend fun importTrackFromUri(uri: Uri): LocalTrack? = importMp3FromUri(uri).getOrNull()
 
     /**
-     * Imports an MP3 file selected via system document/file picker, copying it
-     * into the app's internal private directory so it resides inside this app only.
+     * Imports an audio file (MP3/WAV/FLAC/M4A/AAC/OGG/Opus) selected via system
+     * document/file picker, copying it into the app's internal private directory.
+     * Mp3AudioDecoder already handles all these codecs via MediaExtractor/MediaCodec.
      */
     suspend fun importMp3FromUri(uri: Uri): Result<LocalTrack> = withContext(Dispatchers.IO) {
         try {
@@ -103,8 +110,9 @@ class LocalTrackManager(private val context: Context) {
                 Log.w(TAG, "Could not query URI metadata, using fallback name", e)
             }
 
-            // Sanitize file name
-            val safeName = originalName.replace("[^a-zA-Z0-9._-]".toRegex(), "_")
+            // Sanitize file name, preserve original extension for codec detection
+            val rawSafe = originalName.replace("[^a-zA-Z0-9._-]".toRegex(), "_")
+            val safeName = if (rawSafe.contains('.')) rawSafe else "$rawSafe.mp3"
             val targetFile = File(storageDir, "${UUID.randomUUID()}_$safeName")
 
             // 2. Stream-copy the file into internal private storage
@@ -144,7 +152,7 @@ class LocalTrackManager(private val context: Context) {
                 } catch (_: Exception) {}
             }
 
-            // Fallback for title: filename without .mp3 extension
+            // Fallback for title: filename without extension
             val finalTitle = title?.takeIf { it.isNotBlank() } ?: originalName.substringBeforeLast(".")
             val finalArtist = artist?.takeIf { it.isNotBlank() } ?: "Unknown Artist"
             val finalAlbum = album ?: ""

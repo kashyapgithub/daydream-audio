@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.OutputDevice
@@ -115,7 +116,7 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                 Icon(
                                     imageVector = Icons.Default.Headphones,
                                     contentDescription = null,
@@ -127,7 +128,9 @@ fun SettingsScreen(
                                     text = device.displayName,
                                     fontSize = 15.sp,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (isSelected) GlassTokens.TextPrimary else GlassTokens.TextSecondary
+                                    color = if (isSelected) GlassTokens.TextPrimary else GlassTokens.TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             if (isSelected) {
@@ -183,7 +186,10 @@ fun SettingsScreen(
                             text = if (uiState.isGlobalHookActive) "System-Wide Mode Active" else "Limited System Routing",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = GlassTokens.TextPrimary
+                            color = GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
                     Text(
@@ -207,6 +213,62 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.toggleLegacyMode() },
                         testTag = "setting_legacy_mode"
                     )
+
+                    IosRowSeparator(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Engine processing rate (pillar: 44.1/48kHz agility)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Engine Sample Rate",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GlassTokens.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Running at ${uiState.effectiveSampleRateHz}Hz. Auto follows the device DAC (bit-transparent on 48kHz-native phones); switching stops playback.",
+                            fontSize = 12.sp,
+                            color = GlassTokens.TextSecondary,
+                            lineHeight = 16.sp,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            com.example.model.SampleRateMode.values().forEach { mode ->
+                                val selected = uiState.sampleRateMode == mode
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(GlassTokens.radiusPill)
+                                        .background(if (selected) GlassTokens.IosBlue.copy(alpha = 0.25f) else GlassTokens.IosGroupedSecondary)
+                                        .border(
+                                            0.8.dp,
+                                            if (selected) GlassTokens.IosBlue else GlassTokens.IosSeparator,
+                                            GlassTokens.radiusPill
+                                        )
+                                        .clickable { viewModel.setSampleRateMode(mode) }
+                                        .padding(vertical = 8.dp)
+                                        .testTag("sample_rate_${mode.name.lowercase()}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = mode.label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (selected) GlassTokens.IosBlue else GlassTokens.TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

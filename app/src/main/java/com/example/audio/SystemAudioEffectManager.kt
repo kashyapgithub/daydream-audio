@@ -579,6 +579,9 @@ class SystemAudioEffectManager private constructor() {
                         else -> 8
                     }
                     val echoFactor = (currentEchoWet / 100f).coerceIn(0f, 1f)
+                    // Hard OS limit: EnvironmentalReverb.reflectionsDelay accepts
+                    // 0-300ms, so the in-app 3000ms "canyon" range can never reach
+                    // system-wide audio - long dub delays are player-only by design.
                     val reflDelay = if (currentEchoWet > 0f) currentEchoTimeMs.coerceIn(0, 300) else spatialReflDelay
                     env.reflectionsDelay = reflDelay
                     val reflLevelMb = ((-6000f + (echoFactor + if (currentSpatialRoomType != "Natural") 0.25f else 0f) * 7000f)).toInt().coerceIn(-9000, 1000)

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioComplaint
@@ -140,7 +142,7 @@ fun WizardDiagnosisDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(340.dp)
+                        .heightIn(min = 200.dp, max = 380.dp)
                 ) {
                     items(AudioComplaint.entries) { complaint ->
                         val isSelected = selectedComplaint == complaint
@@ -162,7 +164,7 @@ fun WizardDiagnosisDialog(
                                     else GlassTokens.IosGroupedSecondary
                                 )
                                 .border(
-                                    width = if (isSelected) 1.5.dp else 0.5.dp,
+                                    width = 1.2.dp,
                                     color = if (isSelected) GlassTokens.IosBlue else GlassTokens.IosSeparator,
                                     shape = RoundedCornerShape(14.dp)
                                 )
@@ -197,14 +199,18 @@ fun WizardDiagnosisDialog(
                                         text = complaint.label,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (isSelected) GlassTokens.IosBlue else GlassTokens.TextPrimary
+                                        color = if (isSelected) GlassTokens.IosBlue else GlassTokens.TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = complaint.description,
                                         fontSize = 12.sp,
                                         color = GlassTokens.TextSecondary,
-                                        lineHeight = 16.sp
+                                        lineHeight = 16.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 if (isSelected) {

@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioComplaint
@@ -358,7 +359,9 @@ private fun OnboardingDeviceStep(
                     text = uiState.currentDevice.displayName,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = GlassTokens.IosGreen
+                    color = GlassTokens.IosGreen,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -376,24 +379,27 @@ private fun OnboardingDeviceStep(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Acoustic Target", fontSize = 13.sp, color = GlassTokens.TextSecondary)
-                        Text("Harman Curve", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.TextPrimary)
+                        Text("Acoustic Target", fontSize = 13.sp, color = GlassTokens.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text("Harman Curve", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Spatial Width", fontSize = 13.sp, color = GlassTokens.TextSecondary)
-                        Text("Calibrated", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosBlue)
+                        Text("Spatial Width", fontSize = 13.sp, color = GlassTokens.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text("Calibrated", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosBlue, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Phase Coherence", fontSize = 13.sp, color = GlassTokens.TextSecondary)
-                        Text("Active (0.2ms)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosGreen)
+                        Text("Phase Coherence", fontSize = 13.sp, color = GlassTokens.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text("Active (0.2ms)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GlassTokens.IosGreen, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -476,7 +482,10 @@ private fun OnboardingWizardStep(
                     text = "What's wrong with your sound?",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = GlassTokens.TextPrimary
+                    color = GlassTokens.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
             }
 
@@ -624,7 +633,9 @@ private fun OnboardingCompareStep(
                 color = GlassTokens.TextSecondary,
                 textAlign = TextAlign.Center,
                 lineHeight = 18.sp,
-                modifier = Modifier.padding(top = 6.dp, bottom = 20.dp)
+                modifier = Modifier.padding(top = 6.dp, bottom = 20.dp),
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
             )
 
             // Live A/B Toggle demonstration - AirPods Pro pill style

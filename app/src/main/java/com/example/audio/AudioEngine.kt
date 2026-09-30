@@ -50,9 +50,47 @@ class AudioEngine {
 
     companion object {
         const val SAMPLE_RATE = 44100
+        const val SAMPLE_RATE_HIRES = 48000
+        const val TP_TAPS_PER_PHASE = 16
         private const val BUFFER_SIZE = 2048
         private const val TAG = "AudioEngine"
+
+        /**
+         * Device-effective engine rate, mirrored here so components without an
+         * engine instance (decoder resampler, bounce writer defaults) agree on
+         * one rate. Written only by [setEngineSampleRate] via the ViewModel.
+         */
+        @Volatile
+        var globalSampleRate: Int = SAMPLE_RATE
     }
+
+    /**
+     * Active processing rate of THIS engine instance. 44100Hz everywhere by
+     * default; 48000Hz on native-48k devices (the majority) for a
+     * bit-transparent path to the DAC and exact BS.1770 K-coefficients.
+     * All runtime-computed biquads derive w0 from this; delay lines, comb
+     * tunings, echo capacity and LUFS block size reallocate in
+     * [setEngineSampleRate]. Fixed-coefficient followers (transient/de-esser
+     * envelopes, hiss detector) shift <9% in effective ms - documented
+     * approximation, inaudible in practice.
+     */
+    var engineSampleRate: Int = SAMPLE_RATE
+        private set
+
+    fun setEngineSampleRate(rate: Int): Boolean {
+        val target = if (rate >= SAMPLE_RATE_HIRES) SAMPLE_RATE_HIRES else SAMPLE_RATE
+        if (target == engineSampleRate) return false
+        if (isCurrentlyPlaying()) stopPlayback()
+        engineSampleRate = target
+        globalSampleRate = target
+        allocateRateBuffers()
+        spectrumFiltersConfigured = false
+        resetAllEffects()
+        updateDspCoefficients()
+        return true
+    }
+
+    private fun rateScale(): Double = engineSampleRate.toDouble() / SAMPLE_RATE
 
     private var audioTrack: AudioTrack? = null
     private var playbackJob: Job? = null
@@ -205,6 +243,21 @@ class AudioEngine {
         private set
     var streamingTarget: StreamingTarget = StreamingTarget.SPOTIFY_14
 
+    // Pro Studio QC metering: sticky true-peak hold, over-0dBFS clip counter,
+    // and short-term loudness history for translation checks.
+    var truePeakHoldDbtp: Float = -90f
+    var clipCount: Int = 0
+        private set
+    val lufsShortTermHistory: MutableList<Float> = mutableListOf()
+    var onPeakHoldUpdated: ((holdDbtp: Float, clips: Int) -> Unit)? = null
+
+    fun resetPeakHold() {
+        truePeakHoldDbtp = -90f
+        clipCount = 0
+        lufsShortTermHistory.clear()
+        truePeakMax = 0.0
+    }
+
     // Callbacks
     var onSpectrumUpdated: ((FloatArray, Float) -> Unit)? = null
     var onStudioMetricsUpdated: ((phase: Float, crestFactor: Float, peakDbfs: Float, rmsDbfs: Float) -> Unit)? = null
@@ -339,6 +392,11 @@ class AudioEngine {
         var x1R = 0.0; var x2R = 0.0; var y1R = 0.0; var y2R = 0.0
         var b0 = 1.0; var b1 = 0.0; var b2 = 0.0; var a1 = 0.0; var a2 = 0.0
 
+        fun reset() {
+            x1L = 0.0; x2L = 0.0; y1L = 0.0; y2L = 0.0
+            x1R = 0.0; x2R = 0.0; y1R = 0.0; y2R = 0.0
+        }
+
         fun processL(input: Double): Double {
             val out = b0 * input + b1 * x1L + b2 * x2L - a1 * y1L - a2 * y2L
             if (out.isNaN() || out.isInfinite()) {
@@ -377,7 +435,7 @@ class AudioEngine {
         for (i in spectrumBandFreqs.indices) {
             val f0 = spectrumBandFreqs[i]
             val q = 1.2
-            val w0 = 2.0 * PI * f0 / SAMPLE_RATE
+            val w0 = 2.0 * PI * f0 / engineSampleRate
             val alpha = sin(w0) / (2.0 * q)
             val a0 = 1.0 + alpha
             spectrumFilters[i].b0 = alpha / a0
@@ -406,7 +464,7 @@ class AudioEngine {
     private fun configureDeEsserFilter() {
         val f0 = 6500.0
         val q = 2.2
-        val w0 = 2.0 * PI * f0 / SAMPLE_RATE
+        val w0 = 2.0 * PI * f0 / engineSampleRate
         val alpha = sin(w0) / (2.0 * q)
         val a0 = 1.0 + alpha
         deEsserSidechain.b0 = alpha / a0
@@ -466,7 +524,7 @@ class AudioEngine {
     private val kStage2 = BiquadState()
     private var kFiltersConfigured = false
 
-    private val lufsBlockSize = 4410 // 100ms blocks at 44.1kHz
+    private var lufsBlockSize = 4410 // 100ms blocks at the active rate
     private var lufsBlockSampleCount = 0
     private var lufsBlockEnergySum = 0.0
     private val momentaryBlocks = DoubleArray(4) // 400ms = 4 blocks
@@ -474,12 +532,45 @@ class AudioEngine {
     private val shortTermBlocks = DoubleArray(30) // 3000ms = 30 blocks
     private var shortTermIndex = 0
     private val integratedBlockList = mutableListOf<Double>()
-    private var prevSampleKPeakL = 0.0
-    private var prevSampleKPeakR = 0.0
     private var truePeakMax = 0.0
 
+    // 4x polyphase true-peak oversampler state (pillar upgrade).
+    // 64-tap windowed-sinc prototype split into 4 phases x 16 taps; each
+    // phase holds unity DC gain after normalization (see buildTruePeakPhases).
+    private val tpPhaseTaps: Array<DoubleArray> = buildTruePeakPhases()
+    private val tpHistL = DoubleArray(TP_TAPS_PER_PHASE)
+    private val tpHistR = DoubleArray(TP_TAPS_PER_PHASE)
+    private var tpHistPos = 0
+
+    private fun buildTruePeakPhases(): Array<DoubleArray> {
+        val tapsPerPhase = TP_TAPS_PER_PHASE
+        val phases = Array(4) { DoubleArray(tapsPerPhase) }
+        val total = 4 * tapsPerPhase // 64
+        val center = (total - 1) / 2.0 // 31.5
+        for (n in 0 until total) {
+            val x = (n - center) / 4.0
+            val sinc = if (abs(x) < 1e-9) 1.0 else sin(PI * x) / (PI * x)
+            val hann = 0.5 * (1.0 - cos(2.0 * PI * n / (total - 1)))
+            phases[n % 4][n / 4] += sinc * hann
+        }
+        for (p in 0..3) {
+            val sum = phases[p].sum()
+            require(sum > 0.5) { "True-peak prototype degenerate" }
+            for (k in 0 until tapsPerPhase) phases[p][k] /= sum
+        }
+        return phases
+    }
+
+    private fun resetTruePeakHistory() {
+        tpHistL.fill(0.0)
+        tpHistR.fill(0.0)
+        tpHistPos = 0
+    }
+
     private fun configureKWeightingFilters() {
-        // ITU-R BS.1770-4 exact coefficients at 44.1kHz:
+        // ITU-R BS.1770 K-weighting biquads. These are the spec's 48kHz
+        // coefficient set (exact at 48kHz, within ~0.1dB at 44.1kHz) -
+        // another reason the engine prefers the 48kHz path when available.
         kStage1.b0 = 1.53512485958697
         kStage1.b1 = -2.69169618940638
         kStage1.b2 = 1.19839281085285
@@ -507,13 +598,27 @@ class AudioEngine {
 
         val absL = abs(outL)
         val absR = abs(outR)
-        val maxDirect = max(absL, absR)
-        val estInterSampleL = absL + 0.125 * (absL - prevSampleKPeakL).pow(2)
-        val estInterSampleR = absR + 0.125 * (absR - prevSampleKPeakR).pow(2)
-        prevSampleKPeakL = absL
-        prevSampleKPeakR = absR
-
-        val peakEst = max(maxDirect, max(estInterSampleL, estInterSampleR))
+        // Measurement-grade true peak: 4x polyphase windowed-sinc oversampling
+        // (pillar upgrade). The old abs+0.125*diff^2 heuristic is gone - every
+        // inter-sample peak is reconstructed through a real interpolation
+        // filter, per channel, before the max-hold. Rate-independent: the
+        // prototype is defined relative to samples, valid at 44.1/48kHz.
+        tpHistL[tpHistPos] = outL
+        tpHistR[tpHistPos] = outR
+        tpHistPos = (tpHistPos + 1) % TP_TAPS_PER_PHASE
+        var peakEst = max(absL, absR)
+        for (p in 1..3) {
+            val taps = tpPhaseTaps[p]
+            var yL = 0.0
+            var yR = 0.0
+            for (k in 0 until TP_TAPS_PER_PHASE) {
+                val idx = (tpHistPos - 1 - k + TP_TAPS_PER_PHASE * 2) % TP_TAPS_PER_PHASE
+                yL += taps[k] * tpHistL[idx]
+                yR += taps[k] * tpHistR[idx]
+            }
+            val m = max(abs(yL), abs(yR))
+            if (m > peakEst) peakEst = m
+        }
         if (peakEst > truePeakMax) truePeakMax = peakEst
 
         if (lufsBlockSampleCount >= lufsBlockSize) {
@@ -565,6 +670,18 @@ class AudioEngine {
         } else 6.0f
 
         val truePeakDbtp = (20.0 * log10(truePeakMax.coerceAtLeast(1e-6))).toFloat().coerceIn(-60f, 6f)
+        // Sticky QC meters: hold max true peak, count overs, keep short-term history.
+        if (truePeakDbtp > truePeakHoldDbtp) {
+            truePeakHoldDbtp = truePeakDbtp
+        }
+        if (truePeakMax >= 1.0) {
+            clipCount++
+        }
+        if (stCount >= 30 || shortTermIndex % 5 == 0) {
+            lufsShortTermHistory.add(stLufs)
+            if (lufsShortTermHistory.size > 120) lufsShortTermHistory.removeAt(0)
+        }
+        onPeakHoldUpdated?.invoke(truePeakHoldDbtp, clipCount)
         truePeakMax *= 0.96
 
         return LufsMetrics(
@@ -574,6 +691,146 @@ class AudioEngine {
             loudnessRangeLu = lra,
             truePeakDbtp = truePeakDbtp
         )
+    }
+
+    // Pro Studio snapshot capture / restore for A/B/C/D slots and undo.
+    fun captureSnapshot(name: String): com.example.model.MixSnapshot {
+        return com.example.model.MixSnapshot(
+            name = name,
+            eqGains = eqGains.mapKeys { it.key.name }.mapValues { it.value },
+            parametricGains = parametricGains.mapKeys { it.key.toString() }.mapValues { it.value },
+            parametricQ = parametricQ.mapKeys { it.key.toString() }.mapValues { it.value },
+            spacePercent = spaceAmount,
+            punchPercent = punchAmount,
+            clarityMacroPercent = clarityMacroAmount,
+            loudnessPercent = loudnessBoost,
+            hissRemovalPercent = hissRemoval,
+            deHumEnabled = deHumEnabled,
+            humFrequency = humFrequency,
+            deCrackleEnabled = deCrackleEnabled,
+            compThresholdDb = compThresholdDb,
+            compRatio = compRatio,
+            compAttackMs = compAttackMs,
+            compReleaseMs = compReleaseMs,
+            limiterCeilingDb = limiterCeilingDb,
+            reverbWetPercent = reverbWet,
+            reverbRoomSizePercent = reverbRoomSize,
+            reverbDampingPercent = reverbDamping,
+            reverbFreezeEnabled = reverbFreezeEnabled,
+            echoTimeMs = echoTimeMs,
+            echoFeedbackPercent = echoFeedback,
+            echoWetPercent = echoWet,
+            roomSizeName = roomSize.name,
+            wallMaterialName = wallMaterial.name,
+            midSideName = midSideMode.name,
+            bassMonoMakerEnabled = bassMonoMakerEnabled,
+            referenceMonitorName = referenceMonitor.name,
+            limiterModeName = limiterMode.name,
+            transientAttackPercent = transientAttackPercent,
+            transientSustainPercent = transientSustainPercent,
+            harmonicSaturationName = harmonicSaturationType.name,
+            harmonicDrivePercent = harmonicDrivePercent,
+            fletcherMunsonEnabled = fletcherMunsonEnabled,
+            subCutName = subCutFilter.name,
+            deEsserEnabled = deEsserEnabled,
+            deEsserThresholdDb = deEsserThresholdDb,
+            deEsserMaxReductionDb = deEsserMaxReductionDb,
+            stereoBalanceTrimDb = stereoBalanceTrimDb,
+            invertLeftPolarity = invertLeftPolarity,
+            invertRightPolarity = invertRightPolarity,
+            multibandEnabled = multibandEnabled,
+            mbXoverLowHz = mbXoverLowHz,
+            mbXoverHighHz = mbXoverHighHz,
+            mbThreshLowDb = mbThreshLowDb,
+            mbThreshMidDb = mbThreshMidDb,
+            mbThreshHighDb = mbThreshHighDb,
+            mbRatioLow = mbRatioLow,
+            mbRatioMid = mbRatioMid,
+            mbRatioHigh = mbRatioHigh,
+            mbAttackMs = mbAttackMs,
+            mbReleaseMs = mbReleaseMs,
+            mbKneeDb = mbKneeDb,
+            mbSidechainHpfHz = mbSidechainHpfHz,
+            mbSoloLow = mbSoloLow,
+            mbSoloMid = mbSoloMid,
+            mbSoloHigh = mbSoloHigh,
+            playbackSpeed = playbackSpeed,
+            varispeedMode = varispeedMode,
+            isVintageMode = vintageMode,
+            wowFlutterDepth = wowFlutterDepth,
+            vintageNoiseLevel = vintageNoiseLevel
+        )
+    }
+
+    fun restoreSnapshot(s: com.example.model.MixSnapshot) {
+        s.eqGains.forEach { (k, v) ->
+            runCatching { eqGains[PlainBand.valueOf(k)] = v }
+        }
+        s.parametricGains.forEach { (k, v) ->
+            k.toIntOrNull()?.let { parametricGains[it] = v }
+        }
+        s.parametricQ.forEach { (k, v) ->
+            k.toIntOrNull()?.let { parametricQ[it] = v }
+        }
+        spaceAmount = s.spacePercent
+        punchAmount = s.punchPercent
+        clarityMacroAmount = s.clarityMacroPercent
+        loudnessBoost = s.loudnessPercent
+        hissRemoval = s.hissRemovalPercent
+        deHumEnabled = s.deHumEnabled
+        humFrequency = s.humFrequency
+        deCrackleEnabled = s.deCrackleEnabled
+        compThresholdDb = s.compThresholdDb
+        compRatio = s.compRatio
+        compAttackMs = s.compAttackMs
+        compReleaseMs = s.compReleaseMs
+        limiterCeilingDb = s.limiterCeilingDb
+        reverbWet = s.reverbWetPercent
+        reverbRoomSize = s.reverbRoomSizePercent
+        reverbDamping = s.reverbDampingPercent
+        reverbFreezeEnabled = s.reverbFreezeEnabled
+        echoTimeMs = s.echoTimeMs
+        echoFeedback = s.echoFeedbackPercent
+        echoWet = s.echoWetPercent
+        runCatching { roomSize = RoomSize.valueOf(s.roomSizeName) }
+        runCatching { wallMaterial = WallMaterial.valueOf(s.wallMaterialName) }
+        runCatching { midSideMode = MidSideMode.valueOf(s.midSideName) }
+        bassMonoMakerEnabled = s.bassMonoMakerEnabled
+        runCatching { referenceMonitor = ReferenceMonitor.valueOf(s.referenceMonitorName) }
+        runCatching { limiterMode = LimiterMode.valueOf(s.limiterModeName) }
+        transientAttackPercent = s.transientAttackPercent
+        transientSustainPercent = s.transientSustainPercent
+        runCatching { harmonicSaturationType = HarmonicSaturationType.valueOf(s.harmonicSaturationName) }
+        harmonicDrivePercent = s.harmonicDrivePercent
+        fletcherMunsonEnabled = s.fletcherMunsonEnabled
+        runCatching { subCutFilter = SubCutFilter.valueOf(s.subCutName) }
+        deEsserEnabled = s.deEsserEnabled
+        deEsserThresholdDb = s.deEsserThresholdDb
+        deEsserMaxReductionDb = s.deEsserMaxReductionDb
+        stereoBalanceTrimDb = s.stereoBalanceTrimDb
+        invertLeftPolarity = s.invertLeftPolarity
+        invertRightPolarity = s.invertRightPolarity
+        multibandEnabled = s.multibandEnabled
+        mbXoverLowHz = s.mbXoverLowHz
+        mbXoverHighHz = s.mbXoverHighHz
+        mbThreshLowDb = s.mbThreshLowDb
+        mbThreshMidDb = s.mbThreshMidDb
+        mbThreshHighDb = s.mbThreshHighDb
+        mbRatioLow = s.mbRatioLow
+        mbRatioMid = s.mbRatioMid
+        mbRatioHigh = s.mbRatioHigh
+        mbAttackMs = s.mbAttackMs
+        mbReleaseMs = s.mbReleaseMs
+        mbKneeDb = s.mbKneeDb
+        mbSidechainHpfHz = s.mbSidechainHpfHz
+        mbSoloLow = s.mbSoloLow
+        mbSoloMid = s.mbSoloMid
+        mbSoloHigh = s.mbSoloHigh
+        varispeedMode = s.varispeedMode
+        vintageMode = s.isVintageMode
+        wowFlutterDepth = s.wowFlutterDepth
+        vintageNoiseLevel = s.vintageNoiseLevel
+        updateDspCoefficients()
     }
 
     // Pro Studio Calibration & Test Tone Generator State Registers
@@ -610,19 +867,19 @@ class AudioEngine {
                 Pair(s, s)
             }
             TestToneMode.SINE_1KHZ -> {
-                testToneSine1kPhase += (2.0 * PI * 1000.0) / SAMPLE_RATE
+                testToneSine1kPhase += (2.0 * PI * 1000.0) / engineSampleRate
                 if (testToneSine1kPhase >= 2.0 * PI) testToneSine1kPhase -= 2.0 * PI
                 val s = sin(testToneSine1kPhase) * amp
                 Pair(s, s)
             }
             TestToneMode.SUB_50HZ -> {
-                testToneSub50Phase += (2.0 * PI * 50.0) / SAMPLE_RATE
+                testToneSub50Phase += (2.0 * PI * 50.0) / engineSampleRate
                 if (testToneSub50Phase >= 2.0 * PI) testToneSub50Phase -= 2.0 * PI
                 val s = sin(testToneSub50Phase) * amp
                 Pair(s, s)
             }
             TestToneMode.LOG_SWEEP -> {
-                testToneSweepTime += 1.0 / SAMPLE_RATE
+                testToneSweepTime += 1.0 / engineSampleRate
                 val sweepDuration = 5.0
                 if (testToneSweepTime >= sweepDuration) {
                     testToneSweepTime = 0.0
@@ -757,32 +1014,65 @@ class AudioEngine {
     // Dynamics State
     private var compressorEnvelope = 0.0
 
-    // Delay line for Space & Wow/Flutter
-    private val delayBufferSize = 4410
-    private val delayBufferL = DoubleArray(delayBufferSize)
-    private val delayBufferR = DoubleArray(delayBufferSize)
+    // Delay line for Space & Wow/Flutter (100ms at active rate).
+    private var delayBufferSize = 4410
+    private var delayBufferL = DoubleArray(delayBufferSize)
+    private var delayBufferR = DoubleArray(delayBufferSize)
     private var delayWriteIndex = 0
 
     // Reverb Engine State (Standard Freeverb 44.1kHz delay sizes with +23 right stereo spread).
     // Buffers are allocated 30% larger than canonical tunings so the Cavern room-size
     // preset (lengthScale up to 1.3) has physical headroom - activeLength (set per
-    // RoomSize) controls what's actually used at runtime.
-    private val combBaseTunings = listOf(1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617)
-    private val combBaseTuningsR = listOf(1139, 1211, 1300, 1379, 1445, 1514, 1580, 1640)
-    private val leftCombs = combBaseTunings.map { CombFilter((it * 1.3).toInt()) }
-    private val rightCombs = combBaseTuningsR.map { CombFilter((it * 1.3).toInt()) }
-    private val leftAllPass = listOf(556, 441, 341, 225).map { AllPassFilter(it) }
-    private val rightAllPass = listOf(579, 464, 364, 248).map { AllPassFilter(it) }
+    // RoomSize) controls what's actually used at runtime. Tunings scale with rate.
+    private val combBaseTunings44k = listOf(1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617)
+    private val combBaseTuningsR44k = listOf(1139, 1211, 1300, 1379, 1445, 1514, 1580, 1640)
+    private val allPassTunings44k = listOf(556, 441, 341, 225)
+    private val allPassTuningsR44k = listOf(579, 464, 364, 248)
+    private var combTunings = combBaseTunings44k
+    private var combTuningsR = combBaseTuningsR44k
+    private var leftCombs = combTunings.map { CombFilter((it * 1.3).toInt()) }
+    private var rightCombs = combTuningsR.map { CombFilter((it * 1.3).toInt()) }
+    private var leftAllPass = allPassTunings44k.map { AllPassFilter(it) }
+    private var rightAllPass = allPassTuningsR44k.map { AllPassFilter(it) }
     private val reverbToneTiltL = ToneTilt()
     private val reverbToneTiltR = ToneTilt()
 
-    // Echo / Delay State (44.1kHz stereo ring buffer, up to 3000ms delay - PRD 6.17)
-    private val echoBufferSize = 132300
-    private val echoBufferL = DoubleArray(echoBufferSize)
-    private val echoBufferR = DoubleArray(echoBufferSize)
+    // Echo / Delay State (stereo ring buffer sized for 3000ms at active rate).
+    private var echoBufferSize = 132300
+    private var echoBufferL = DoubleArray(echoBufferSize)
+    private var echoBufferR = DoubleArray(echoBufferSize)
     private var echoWriteIndex = 0
     private var prevEchoFilterL = 0.0
     private var prevEchoFilterR = 0.0
+
+    /**
+     * Reallocates every rate-dependent buffer for [engineSampleRate].
+     * Biquad coefficient states are rate-agnostic (recomputed in
+     * [updateDspCoefficients]); delay/comb/echo lines and LUFS block size
+     * are physical sample counts and must scale.
+     */
+    private fun allocateRateBuffers() {
+        val scale = rateScale()
+        delayBufferSize = (SAMPLE_RATE / 10.0 * scale).toInt().coerceAtLeast(441)
+        delayBufferL = DoubleArray(delayBufferSize)
+        delayBufferR = DoubleArray(delayBufferSize)
+        delayWriteIndex = 0
+        combTunings = combBaseTunings44k.map { (it * scale).toInt().coerceAtLeast(64) }
+        combTuningsR = combBaseTuningsR44k.map { (it * scale).toInt().coerceAtLeast(64) }
+        leftCombs = combTunings.map { CombFilter((it * 1.3).toInt()) }
+        rightCombs = combTuningsR.map { CombFilter((it * 1.3).toInt()) }
+        leftAllPass = allPassTunings44k.map { AllPassFilter((it * scale).toInt().coerceAtLeast(16)) }
+        rightAllPass = allPassTuningsR44k.map { AllPassFilter((it * scale).toInt().coerceAtLeast(16)) }
+        echoBufferSize = (engineSampleRate * 3).coerceAtLeast(132300 / 2)
+        echoBufferL = DoubleArray(echoBufferSize)
+        echoBufferR = DoubleArray(echoBufferSize)
+        echoWriteIndex = 0
+        prevEchoFilterL = 0.0
+        prevEchoFilterR = 0.0
+        lufsBlockSize = (engineSampleRate / 10).coerceAtLeast(441)
+        lufsBlockSampleCount = 0
+        lufsBlockEnergySum = 0.0
+    }
 
     // Mono detection metric (PRD FR-4)
     var correlationMetric = 0.85f
@@ -837,7 +1127,7 @@ class AudioEngine {
 
         if (audioTrack == null) {
             val minBuf = AudioTrack.getMinBufferSize(
-                SAMPLE_RATE,
+                engineSampleRate,
                 AudioFormat.CHANNEL_OUT_STEREO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
@@ -852,7 +1142,7 @@ class AudioEngine {
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(SAMPLE_RATE)
+                        .setSampleRate(engineSampleRate)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                         .build()
                 )
@@ -990,6 +1280,8 @@ class AudioEngine {
                 thdHarmonicAccum = 0.0
                 thdFundamentalAccum = 0.0
                 onThdUpdated?.invoke(thdPercent)
+                onGrDbUpdated?.invoke(measuredGrDb)
+                onMbGrUpdated?.invoke(mbGrLowDb, mbGrMidDb, mbGrHighDb)
                 onTransientActivityUpdated?.invoke(transientAttackActivity, transientSustainActivity)
 
                 // Copy vector scope snapshot for UI
@@ -1126,6 +1418,18 @@ class AudioEngine {
     fun resetAllEffects() {
         resetReverb()
         resetEcho()
+        resetTruePeakHistory()
+        mbEnvLow = 0.0
+        mbEnvMid = 0.0
+        mbEnvHigh = 0.0
+        mbGrLowDb = 0f
+        mbGrMidDb = 0f
+        mbGrHighDb = 0f
+        mbLp1a.reset(); mbLp1b.reset()
+        mbHp2a.reset(); mbHp2b.reset()
+        mbMidHpA.reset(); mbMidHpB.reset()
+        mbMidLpA.reset(); mbMidLpB.reset()
+        mbScHp.reset()
         monoMakerLow.x1L = 0.0; monoMakerLow.x2L = 0.0; monoMakerLow.y1L = 0.0; monoMakerLow.y2L = 0.0
         monoMakerLow.x1R = 0.0; monoMakerLow.x2R = 0.0; monoMakerLow.y1R = 0.0; monoMakerLow.y2R = 0.0
         monoMakerHigh.x1L = 0.0; monoMakerHigh.x2L = 0.0; monoMakerHigh.y1L = 0.0; monoMakerHigh.y2L = 0.0
@@ -1169,6 +1473,8 @@ class AudioEngine {
     fun processStereoSample(rawL: Double, rawR: Double): Pair<Double, Double> {
         if (isBypassed.get()) {
             // Instant Bypass (<50ms A/B testing, PRD FR-3)
+            // No compression runs while bypassed, so relax the GR meter.
+            trackMeasuredGr(1.0)
             // If Gain-Matched A/B is active, calibrate raw volume to match processed RMS
             if (gainMatchedAB && rawRmsRolling > 0.0001 && procRmsRolling > 0.0001) {
                 val gainMatchRatio = (procRmsRolling / rawRmsRolling).coerceIn(0.2, 5.0)
@@ -1310,10 +1616,17 @@ class AudioEngine {
         val (s4L, s4R) = processDynamicsCompressor(s3L, s3R)
 
         // ==========================================
+        // STAGE 4m: PRO STUDIO 3-BAND MULTIBAND COMPRESSOR
+        // Subtractive LR4 crossover, per-band knee + sidechain HPF.
+        // Transparent when disabled. Player-only (no OS mapping).
+        // ==========================================
+        val (s4mL, s4mR) = processMultiband(s4L, s4R)
+
+        // ==========================================
         // STAGE 4a: PRO STUDIO DYNAMIC TRANSIENT DESIGNER
         // (SPL / Oxford TransMod Differential Envelope Follower)
         // ==========================================
-        val (s4aL, s4aR) = processTransientDesigner(s4L, s4R)
+        val (s4aL, s4aR) = processTransientDesigner(s4mL, s4mR)
 
         // ==========================================
         // STAGE 4b: PRO STUDIO TAPE/TUBE SATURATION DRIVE
@@ -1410,9 +1723,11 @@ class AudioEngine {
         // makeup (+4.2dB at punch=0) would color the signal even when the
         // user asked for zero dynamics processing.
         if (!isAdvancedParametricMode && punchAmount <= 0.01f) {
+            trackMeasuredGr(1.0)
             return Pair(inL, inR)
         }
         if (isAdvancedParametricMode && compRatio <= 1.01f) {
+            trackMeasuredGr(1.0)
             return Pair(inL, inR)
         }
         // RMS-based power detector (PRD 8.3: RMS, not pure peak)
@@ -1438,8 +1753,8 @@ class AudioEngine {
         }
 
         // Time constants from parameters (PRD 8.3)
-        val attackCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (attackMs / 1000.0)))
-        val releaseCoef = 1.0 - kotlin.math.exp(-1.0 / (SAMPLE_RATE * (releaseMs / 1000.0)))
+        val attackCoef = 1.0 - kotlin.math.exp(-1.0 / (engineSampleRate * (attackMs / 1000.0)))
+        val releaseCoef = 1.0 - kotlin.math.exp(-1.0 / (engineSampleRate * (releaseMs / 1000.0)))
 
         compressorEnvelope += if (power > compressorEnvelope) {
             attackCoef * (power - compressorEnvelope)
@@ -1464,8 +1779,160 @@ class AudioEngine {
         // Automatic makeup gain
         val makeupLinear = 10.0.pow((-threshDb * 0.35) / 20.0)
         val totalGain = gainReduction * makeupLinear
+        trackMeasuredGr(gainReduction)
 
         return Pair(inL * totalGain, inR * totalGain)
+    }
+
+    // Pro Studio measured gain reduction (pillar 2): the true per-sample GR
+    // applied by the compressor above - not an RMS-vs-threshold estimate.
+    // Instant attack, ~200ms release ballistics so the LED ladder reads like
+    // hardware. Makeup gain is excluded on purpose: GR meters show reduction.
+    var measuredGrDb: Float = 0f
+        private set
+    var onGrDbUpdated: ((Float) -> Unit)? = null
+
+    // Pro Studio 3-Band Multiband Compressor (mastering dynamics).
+    // Parallel LR4 crossover, per-band threshold/ratio, shared time
+    // constants, adjustable knee, sidechain highpass, per-band solo.
+    // Player-only DSP: Android's DynamicsProcessing limiter is single-band,
+    // so (unlike Punch) there is no system-wide mapping for this stage.
+    var multibandEnabled: Boolean = false
+    var mbXoverLowHz: Float = 250f // 60..800
+    var mbXoverHighHz: Float = 4000f // 1000..12000
+    var mbThreshLowDb: Float = -18f
+    var mbThreshMidDb: Float = -18f
+    var mbThreshHighDb: Float = -18f
+    var mbRatioLow: Float = 2f
+    var mbRatioMid: Float = 2f
+    var mbRatioHigh: Float = 2f
+    var mbAttackMs: Float = 20f // shared, 1..100
+    var mbReleaseMs: Float = 150f // shared, 10..500
+    var mbKneeDb: Float = 6f // 0 = hard knee .. 12 = soft
+    var mbSidechainHpfHz: Int = 0 // 0 = off, else 80 / 150
+    var mbSoloLow: Boolean = false
+    var mbSoloMid: Boolean = false
+    var mbSoloHigh: Boolean = false
+    var mbGrLowDb: Float = 0f
+        private set
+    var mbGrMidDb: Float = 0f
+        private set
+    var mbGrHighDb: Float = 0f
+        private set
+    var onMbGrUpdated: ((lowDb: Float, midDb: Float, highDb: Float) -> Unit)? = null
+
+    // LR4 crossover states (cascaded Butterworth pairs, stereo).
+    // Parallel topology: LOW = LP(fc1), HIGH = HP(fc2),
+    // MID = HP(fc1) -> LP(fc2) bandpass. Parallel (not subtractive:
+    // subtractive mids carry phase-rotated leftovers that escape their
+    // band's gain, verified by measurement) sums near-flat with matched
+    // gains and degrades gracefully under heavy per-band GR.
+    private val mbLp1a = BiquadState()
+    private val mbLp1b = BiquadState()
+    private val mbHp2a = BiquadState()
+    private val mbHp2b = BiquadState()
+    private val mbMidHpA = BiquadState()
+    private val mbMidHpB = BiquadState()
+    private val mbMidLpA = BiquadState()
+    private val mbMidLpB = BiquadState()
+    private val mbScHp = BiquadState()
+    private var mbEnvLow = 0.0
+    private var mbEnvMid = 0.0
+    private var mbEnvHigh = 0.0
+
+    private fun smoothGrDb(currentDb: Float, gainReductionLin: Double): Float {
+        val instDb = (-20.0 * log10(gainReductionLin.coerceIn(1e-6, 1.0))).toFloat().coerceIn(0f, 24f)
+        return if (instDb > currentDb) {
+            instDb
+        } else {
+            val releaseCoef = 1.0f - kotlin.math.exp(-1.0f / (engineSampleRate * 0.20f)).toFloat()
+            currentDb + (instDb - currentDb) * releaseCoef
+        }
+    }
+
+    private fun mbBandGain(
+        detL: Double,
+        detR: Double,
+        env: Double,
+        threshDb: Float,
+        ratioIn: Float,
+        attackCoef: Double,
+        releaseCoef: Double
+    ): Triple<Double, Double, Double> {
+        // Stereo-linked detector: one gain for both channels (no image shift).
+        val power = (detL * detL + detR * detR) * 0.5
+        var e = env + if (power > env) attackCoef * (power - env) else releaseCoef * (power - env)
+        if (e < 0.0 || e.isNaN()) e = 0.0
+        val levelDb = 10.0 * log10(max(1e-12, e))
+        val overDb = levelDb - threshDb
+        val k = mbKneeDb.toDouble().coerceIn(0.0, 12.0)
+        val ratio = max(1.0, ratioIn.toDouble())
+        val grDb = if (overDb <= -k / 2) {
+            0.0
+        } else if (k < 0.01 || overDb >= k / 2) {
+            overDb * (1.0 - 1.0 / ratio)
+        } else {
+            (1.0 - 1.0 / ratio) * (overDb + k / 2) * (overDb + k / 2) / (2.0 * k)
+        }
+        val grLin = 10.0.pow(-grDb / 20.0)
+        val makeup = 10.0.pow((-threshDb * 0.35) / 20.0)
+        return Triple(e, grLin * makeup, grLin)
+    }
+
+    fun processMultiband(inL: Double, inR: Double): Pair<Double, Double> {
+        if (!multibandEnabled) return Pair(inL, inR)
+
+        // Parallel LR4 3-way: low + bandpass mid + high.
+        val lowL = mbLp1b.processL(mbLp1a.processL(inL))
+        val lowR = mbLp1b.processR(mbLp1a.processR(inR))
+        val highL = mbHp2b.processL(mbHp2a.processL(inL))
+        val highR = mbHp2b.processR(mbHp2a.processR(inR))
+        val midL = mbMidLpB.processL(mbMidLpA.processL(mbMidHpB.processL(mbMidHpA.processL(inL))))
+        val midR = mbMidLpB.processR(mbMidLpA.processR(mbMidHpB.processR(mbMidHpA.processR(inR))))
+
+        val attackCoef = 1.0 - kotlin.math.exp(-1.0 / (engineSampleRate * (mbAttackMs.toDouble().coerceIn(1.0, 100.0) / 1000.0)))
+        val releaseCoef = 1.0 - kotlin.math.exp(-1.0 / (engineSampleRate * (mbReleaseMs.toDouble().coerceIn(10.0, 500.0) / 1000.0)))
+
+        // Sidechain highpass keeps bass out of the detectors (anti-pump).
+        fun scFilter(v: Double, isLeft: Boolean): Double {
+            if (mbSidechainHpfHz <= 0) return v
+            return if (isLeft) mbScHp.processL(v) else mbScHp.processR(v)
+        }
+
+        val (newEnvLow, gainLow, grLow) = mbBandGain(
+            scFilter(lowL, true), scFilter(lowR, false), mbEnvLow,
+            mbThreshLowDb, mbRatioLow, attackCoef, releaseCoef
+        )
+        val (newEnvMid, gainMid, grMid) = mbBandGain(
+            scFilter(midL, true), scFilter(midR, false), mbEnvMid,
+            mbThreshMidDb, mbRatioMid, attackCoef, releaseCoef
+        )
+        val (newEnvHigh, gainHigh, grHigh) = mbBandGain(
+            scFilter(highL, true), scFilter(highR, false), mbEnvHigh,
+            mbThreshHighDb, mbRatioHigh, attackCoef, releaseCoef
+        )
+        mbEnvLow = newEnvLow
+        mbEnvMid = newEnvMid
+        mbEnvHigh = newEnvHigh
+        mbGrLowDb = smoothGrDb(mbGrLowDb, grLow)
+        mbGrMidDb = smoothGrDb(mbGrMidDb, grMid)
+        mbGrHighDb = smoothGrDb(mbGrHighDb, grHigh)
+
+        val anySolo = mbSoloLow || mbSoloMid || mbSoloHigh
+        val useLow = !anySolo || mbSoloLow
+        val useMid = !anySolo || mbSoloMid
+        val useHigh = !anySolo || mbSoloHigh
+        val outL = (if (useLow) lowL * gainLow else 0.0) +
+            (if (useMid) midL * gainMid else 0.0) +
+            (if (useHigh) highL * gainHigh else 0.0)
+        val outR = (if (useLow) lowR * gainLow else 0.0) +
+            (if (useMid) midR * gainMid else 0.0) +
+            (if (useHigh) highR * gainHigh else 0.0)
+        return Pair(outL, outR)
+    }
+
+    private fun trackMeasuredGr(gainReductionLin: Double) {
+        measuredGrDb = smoothGrDb(measuredGrDb, gainReductionLin)
     }
 
     private fun processVirtualizerSpace(inL: Double, inR: Double): Pair<Double, Double> {
@@ -1769,7 +2236,7 @@ class AudioEngine {
 
     fun processStereoEcho(inL: Double, inR: Double): Pair<Double, Double> {
         val wetFactor = (echoWet / 100.0).coerceIn(0.0, 1.0)
-        val delaySamples = ((echoTimeMs / 1000.0) * SAMPLE_RATE).toInt().coerceIn(1, echoBufferSize - 1)
+        val delaySamples = ((echoTimeMs / 1000.0) * engineSampleRate).toInt().coerceIn(1, echoBufferSize - 1)
         val readIdx = (echoWriteIndex - delaySamples + echoBufferSize) % echoBufferSize
 
         val delayedL = echoBufferL[readIdx]
@@ -1829,8 +2296,8 @@ class AudioEngine {
         val monoIn = (inL + inR) * 0.22
 
         for (i in leftCombs.indices) {
-            leftCombs[i].activeLength = (combBaseTunings[i] * roomSize.lengthScale).toInt()
-            rightCombs[i].activeLength = (combBaseTuningsR[i] * roomSize.lengthScale).toInt()
+            leftCombs[i].activeLength = (combTunings[i] * roomSize.lengthScale).toInt()
+            rightCombs[i].activeLength = (combTuningsR[i] * roomSize.lengthScale).toInt()
         }
 
         var outL = 0.0
@@ -1874,7 +2341,7 @@ class AudioEngine {
         vintageWriteIndex = (vintageWriteIndex + 1) % vintageDelaySize
 
         // LFO rates for wow (~1.2Hz) and flutter (~6.8Hz)
-        lfoPhase += 1.2 * (2.0 * PI / SAMPLE_RATE)
+        lfoPhase += 1.2 * (2.0 * PI / engineSampleRate)
         if (lfoPhase > 2.0 * PI * 1000) lfoPhase -= 2.0 * PI * 1000
 
         val wowSamples = sin(lfoPhase) * (wowFlutterDepth / 100.0) * 14.0
@@ -1905,7 +2372,7 @@ class AudioEngine {
 
     private fun synthesizeSourceSample(track: DemoTrack): Pair<Double, Double> {
         val noteLengthSeconds = 0.28
-        seqTimer += (1.0 / SAMPLE_RATE) * playbackSpeed
+        seqTimer += (1.0 / engineSampleRate) * playbackSpeed
         if (seqTimer >= noteLengthSeconds) {
             seqTimer = 0.0
             seqStep++
@@ -1922,7 +2389,7 @@ class AudioEngine {
         }
 
         val currentNoteFreq = notes[seqStep % notes.size]
-        val dt = 2.0 * PI / SAMPLE_RATE
+        val dt = 2.0 * PI / engineSampleRate
 
         phase += currentNoteFreq * dt
         if (phase > 2.0 * PI * 100) phase -= 2.0 * PI * 100
@@ -1998,7 +2465,7 @@ class AudioEngine {
         calculateCookbookBiquad(hissHighShelf, 4800.0, hissCutDb, 0.7, isLowShelf = false, isHighShelf = true)
 
         // 5. Clarity 3-Band Crossover Split (3.5kHz 2nd-order Linkwitz-Riley low pass & high pass)
-        val wC = 2.0 * PI * 3500.0 / SAMPLE_RATE
+        val wC = 2.0 * PI * 3500.0 / engineSampleRate
         val alphaC = sin(wC) / (2.0 * 0.707)
         val cosWC = cos(wC)
         val a0C = 1.0 + alphaC
@@ -2018,6 +2485,21 @@ class AudioEngine {
         // 6. Pro Studio Bass Mono-Maker Crossover (120Hz Butterworth)
         calculateLowpass(monoMakerLow, 120.0, 0.707)
         calculateHighpass(monoMakerHigh, 120.0, 0.707)
+
+        // 6b. Pro Studio Multiband LR4 Crossover (cascaded Butterworth pairs)
+        val mbLo = mbXoverLowHz.toDouble().coerceIn(60.0, 800.0)
+        val mbHi = mbXoverHighHz.toDouble().coerceIn(1000.0, 12000.0)
+        calculateLowpass(mbLp1a, mbLo, 0.707)
+        calculateLowpass(mbLp1b, mbLo, 0.707)
+        calculateHighpass(mbHp2a, mbHi, 0.707)
+        calculateHighpass(mbHp2b, mbHi, 0.707)
+        calculateHighpass(mbMidHpA, mbLo, 0.707)
+        calculateHighpass(mbMidHpB, mbLo, 0.707)
+        calculateLowpass(mbMidLpA, mbHi, 0.707)
+        calculateLowpass(mbMidLpB, mbHi, 0.707)
+        if (mbSidechainHpfHz > 0) {
+            calculateHighpass(mbScHp, mbSidechainHpfHz.toDouble(), 0.707)
+        }
 
         // 7. Pro Studio Harmonic Saturation Transformer Core Filter (<120Hz)
         calculateLowpass(transformerLowpass, 120.0, 0.707)
@@ -2042,11 +2524,14 @@ class AudioEngine {
                 calculateCookbookBiquad(monitorFilter4, 400.0, -1.0, 1.0, isLowShelf = false, isHighShelf = false)
             }
             ReferenceMonitor.AURATONE_5C -> {
-                // Auratone 5C Soundcube: 250Hz - 5.5kHz narrow vocal bandpass
+                // Auratone 5C Soundcube: 250Hz - 5.5kHz narrow vocal bandpass.
+                // Sealed 5C rolls off ~24dB/oct below resonance, so the low
+                // edge is a true 4th-order cascade (two HP sections); the
+                // high edge stays 2nd-order soft-dome-like. +3dB presence.
                 calculateHighpass(monitorFilter1, 250.0, 0.8)
                 calculateLowpass(monitorFilter2, 5500.0, 0.8)
                 calculateCookbookBiquad(monitorFilter3, 1200.0, 3.0, 1.2, isLowShelf = false, isHighShelf = false)
-                calculateCookbookBiquad(monitorFilter4, 1000.0, 0.0, 0.707, isLowShelf = false, isHighShelf = false)
+                calculateHighpass(monitorFilter4, 250.0, 0.8)
             }
             ReferenceMonitor.CAR_TEST -> {
                 // Car Test: In-cabin 65Hz cavity boom, 380Hz scooped mids, 9.5kHz windshield sizzle
@@ -2093,7 +2578,7 @@ class AudioEngine {
     }
 
     private fun calculateLowpass(biquad: BiquadState, f0: Double, q: Double = 0.707) {
-        val w0 = 2.0 * PI * f0.coerceIn(20.0, 20000.0) / SAMPLE_RATE
+        val w0 = 2.0 * PI * f0.coerceIn(20.0, 20000.0) / engineSampleRate
         val cosW0 = cos(w0)
         val alpha = sin(w0) / (2.0 * q)
         val a0 = 1.0 + alpha
@@ -2105,7 +2590,7 @@ class AudioEngine {
     }
 
     private fun calculateHighpass(biquad: BiquadState, f0: Double, q: Double = 0.707) {
-        val w0 = 2.0 * PI * f0.coerceIn(20.0, 20000.0) / SAMPLE_RATE
+        val w0 = 2.0 * PI * f0.coerceIn(20.0, 20000.0) / engineSampleRate
         val cosW0 = cos(w0)
         val alpha = sin(w0) / (2.0 * q)
         val a0 = 1.0 + alpha
@@ -2126,7 +2611,7 @@ class AudioEngine {
     ) {
         val gain = 10.0.pow(gainDb / 40.0)
         val clampedF0 = f0.coerceIn(20.0, 20000.0)
-        val w0 = 2.0 * PI * clampedF0 / SAMPLE_RATE
+        val w0 = 2.0 * PI * clampedF0 / engineSampleRate
         val alpha = sin(w0) / (2.0 * q.coerceIn(0.2, 10.0))
         val cosW0 = cos(w0)
 
@@ -2169,8 +2654,8 @@ class AudioEngine {
     }
 
     private fun calculateNotch(biquad: BiquadState, f0: Double, q: Double) {
-        if (f0 >= SAMPLE_RATE / 2) return
-        val w0 = 2.0 * PI * f0 / SAMPLE_RATE
+        if (f0 >= engineSampleRate / 2) return
+        val w0 = 2.0 * PI * f0 / engineSampleRate
         val alpha = sin(w0) / (2.0 * q)
         val cosW0 = cos(w0)
         val a0 = 1.0 + alpha

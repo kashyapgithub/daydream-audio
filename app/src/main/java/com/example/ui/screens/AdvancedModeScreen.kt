@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -74,8 +75,11 @@ import com.example.ui.components.LiquidSlider
 import com.example.ui.components.LissajousVectorScope
 import com.example.ui.components.LufsLoudnessMeter
 import com.example.ui.components.MasteringSubCutCard
+import com.example.ui.components.MultibandDynamicsCard
 import com.example.ui.components.ParametricEqCurveVisualizer
 import com.example.ui.components.PhaseCorrelationMeter
+import com.example.ui.components.ProMixWorkflowCard
+import com.example.ui.components.QcPeakHoldCard
 import com.example.ui.components.SoundTargetCarousel
 import com.example.ui.components.SpatialStageVisualizer
 import com.example.ui.components.StereoBalanceAndPolarityCard
@@ -227,12 +231,14 @@ fun AdvancedModeScreen(
                     .padding(16.dp)
             ) {
                 Column {
-                    // Studio Hardware LED Gain Reduction Meter
+                    // Studio Hardware LED Gain Reduction Meter (measured DSP loop
+                    // while the in-app engine runs, estimate fallback otherwise).
                     LedCompressionMeter(
                         thresholdDb = uiState.compThresholdDb,
                         ratio = uiState.compRatio,
                         audioRms = if (uiState.isPlaying) uiState.audioRms else 0.001f,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        modifier = Modifier.padding(bottom = 12.dp),
+                        measuredGrDb = if (uiState.isPlaying) uiState.measuredGrDb else -1f
                     )
 
                     LiquidSlider(
@@ -286,6 +292,47 @@ fun AdvancedModeScreen(
                     )
                 }
             }
+        }
+
+        // Pro Studio 3-Band Multiband Compressor (player-only mastering stage)
+        item {
+            IosSectionHeader(
+                title = "Multiband Dynamics",
+                subtitle = "LR4 3-band compression with knee & sidechain filter"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            MultibandDynamicsCard(
+                enabled = uiState.multibandEnabled,
+                onToggleEnabled = { viewModel.setMultibandEnabled(it) },
+                xoverLowHz = uiState.mbXoverLowHz,
+                onXoverLowChange = { viewModel.setMbXoverLowHz(it) },
+                xoverHighHz = uiState.mbXoverHighHz,
+                onXoverHighChange = { viewModel.setMbXoverHighHz(it) },
+                threshLowDb = uiState.mbThreshLowDb,
+                threshMidDb = uiState.mbThreshMidDb,
+                threshHighDb = uiState.mbThreshHighDb,
+                onThreshChange = { band, v -> viewModel.setMbThreshDb(band, v) },
+                ratioLow = uiState.mbRatioLow,
+                ratioMid = uiState.mbRatioMid,
+                ratioHigh = uiState.mbRatioHigh,
+                onRatioChange = { band, v -> viewModel.setMbRatio(band, v) },
+                attackMs = uiState.mbAttackMs,
+                onAttackChange = { viewModel.setMbAttackMs(it) },
+                releaseMs = uiState.mbReleaseMs,
+                onReleaseChange = { viewModel.setMbReleaseMs(it) },
+                kneeDb = uiState.mbKneeDb,
+                onKneeChange = { viewModel.setMbKneeDb(it) },
+                sidechainHpfHz = uiState.mbSidechainHpfHz,
+                onSidechainHpfChange = { viewModel.setMbSidechainHpfHz(it) },
+                soloLow = uiState.mbSoloLow,
+                soloMid = uiState.mbSoloMid,
+                soloHigh = uiState.mbSoloHigh,
+                onSoloChange = { band, v -> viewModel.setMbSolo(band, v) },
+                grLowDb = uiState.mbGrLowDb,
+                grMidDb = uiState.mbGrMidDb,
+                grHighDb = uiState.mbGrHighDb,
+                reduceGlass = uiState.reduceGlass
+            )
         }
 
         // Space HRTF Profile Choice (Apple Inset Grouped Section)
@@ -367,24 +414,60 @@ fun AdvancedModeScreen(
                     .padding(16.dp)
             ) {
                 Column {
-                    // Apple Subtle Capability Disclosure Callout
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(GlassTokens.radiusSm)
-                            .background(GlassTokens.IosGroupedSecondary)
-                            .border(0.6.dp, GlassTokens.IosSeparator, GlassTokens.radiusSm)
-                            .padding(10.dp)
-                    ) {
-                        Text(
-                            text = "💡 Room Size & Wall Material process Daydream's player directly. System-Wide mode routes through standard OS reverb.",
-                            fontSize = 11.sp,
-                            color = GlassTokens.TextSecondary,
-                            lineHeight = 15.sp
-                        )
+                    // Path honesty: these Time & Space sliders drive Daydream's own
+                    // player DSP. External apps (YouTube etc.) take the System path,
+                    // which only carries EQ / Space / Punch / Loudness.
+                    if (uiState.isExternalPlaybackActive && !uiState.isPlaying) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(GlassTokens.radiusSm)
+                                .background(GlassTokens.IosOrange.copy(alpha = 0.12f))
+                                .border(0.8.dp, GlassTokens.IosOrange.copy(alpha = 0.45f), GlassTokens.radiusSm)
+                                .padding(10.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = "You're hearing external audio (System path): echo, reverb character and tempo live in Daydream's player, so these sliders won't touch it. System audio gets EQ / Space / Punch / Loudness only.",
+                                    fontSize = 11.sp,
+                                    color = GlassTokens.IosOrange,
+                                    lineHeight = 15.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = { viewModel.selectTrack(0) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.IosOrange),
+                                    shape = GlassTokens.radiusPill
+                                ) {
+                                    Text(
+                                        text = "Preview on demo track",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    } else {
+                        // Apple Subtle Capability Disclosure Callout
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(GlassTokens.radiusSm)
+                                .background(GlassTokens.IosGroupedSecondary)
+                                .border(0.6.dp, GlassTokens.IosSeparator, GlassTokens.radiusSm)
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = "💡 Room Size & Wall Material process Daydream's player directly. System-Wide mode routes through standard OS reverb.",
+                                fontSize = 11.sp,
+                                color = GlassTokens.TextSecondary,
+                                lineHeight = 15.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = "ROOM SIZE CHARACTER",
@@ -478,6 +561,15 @@ fun AdvancedModeScreen(
                         reduceGlass = uiState.reduceGlass
                     )
 
+                    if (uiState.reverbWetPercent <= 0.5f) {
+                        Text(
+                            text = "Wet Mix is at 0% — Room Size, Damping and Freeze are bypassed until you raise it.",
+                            fontSize = 11.sp,
+                            color = GlassTokens.IosOrange,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
                     IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
                     LiquidSlider(
@@ -554,6 +646,15 @@ fun AdvancedModeScreen(
                         accentColor = GlassTokens.IosTeal,
                         reduceGlass = uiState.reduceGlass
                     )
+
+                    if (uiState.echoWetPercent <= 0.5f) {
+                        Text(
+                            text = "Wet Mix is at 0% — Delay Time and Feedback are bypassed until you raise it.",
+                            fontSize = 11.sp,
+                            color = GlassTokens.IosOrange,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
 
                     IosRowSeparator(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -740,7 +841,10 @@ fun AdvancedModeScreen(
                                     text = "AUDITION ACTIVE: ${uiState.midSideMode.displayName}. Tap 'Stereo' when finished.",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = GlassTokens.IosOrange
+                                    color = GlassTokens.IosOrange,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
                         }
@@ -798,7 +902,9 @@ fun AdvancedModeScreen(
                                     text = monitorLabel,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.Black else GlassTokens.TextPrimary
+                                    color = if (isSelected) Color.Black else GlassTokens.TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -819,14 +925,18 @@ fun AdvancedModeScreen(
                                 text = "${uiState.referenceMonitor.label} • ${uiState.referenceMonitor.subtitle}",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlassTokens.IosTeal
+                                color = GlassTokens.IosTeal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = uiState.referenceMonitor.description,
                                 fontSize = 11.sp,
                                 color = GlassTokens.TextSecondary,
-                                lineHeight = 15.sp
+                                lineHeight = 15.sp,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1011,6 +1121,58 @@ fun AdvancedModeScreen(
                 onLevelChange = { viewModel.setTestToneLevelDb(it) },
                 reduceGlass = uiState.reduceGlass
             )
+        }
+
+        // Pro Studio Mix Workflow: snapshots, QC peak-hold, offline bounce
+        item {
+            IosSectionHeader(
+                title = "Pro Mix Workflow",
+                subtitle = "A/B/C/D snapshots, clip QC & WAV bounce with loudness match"
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .iosInsetGroupedCard(uiState.reduceGlass)
+                    .padding(16.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ProMixWorkflowCard(
+                        snapshots = uiState.mixSnapshots,
+                        activeIndex = uiState.activeSnapshotIndex,
+                        canUndo = uiState.canUndoMix,
+                        onSave = { viewModel.saveMixSnapshot(it) },
+                        onRecall = { viewModel.recallMixSnapshot(it) },
+                        onClear = { viewModel.clearMixSnapshot(it) },
+                        onUndo = { viewModel.undoMixChange() },
+                        reduceGlass = uiState.reduceGlass
+                    )
+                    QcPeakHoldCard(
+                        holdDbtp = uiState.truePeakHoldDbtp,
+                        clipCount = uiState.clipCount,
+                        integratedLufs = uiState.lufsMetrics.integratedLufs,
+                        targetLufs = uiState.streamingTarget.targetLufs,
+                        autoGainDb = viewModel.loudnessAutoMatchGainDb(),
+                        isBouncing = uiState.isBouncing,
+                        lastBounceInfo = uiState.lastBouncePath?.let {
+                            "Last: ${it.substringAfterLast('/')} (${String.format("%.1f", uiState.lastBounceGainDb)}dB, peak ${String.format("%.1f", uiState.lastBouncePeakDbtp)}dBTP)"
+                        },
+                        onReset = { viewModel.resetPeakHold() },
+                        onBounce = { viewModel.bounceCurrentMixToWav(context) },
+                        hasLocalTrack = uiState.currentLocalTrack != null,
+                        trackTitle = uiState.currentLocalTrack?.title,
+                        bitDepth = uiState.bounceBitDepth,
+                        onSelectBitDepth = { viewModel.setBounceBitDepth(it) },
+                        bounceProgress = uiState.bounceProgress,
+                        verifyText = uiState.bounceVerifyText
+                    )
+                    Text(
+                        text = "Library now imports MP3 / WAV / FLAC / M4A / OGG / Opus — decoder auto-resamples to 44.1kHz.",
+                        fontSize = 11.sp,
+                        color = GlassTokens.TextSecondary
+                    )
+                }
+            }
         }
 
         // Preset Export / Import (Apple Inset Grouped Section)

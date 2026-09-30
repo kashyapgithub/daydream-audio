@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
@@ -42,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -227,7 +230,7 @@ fun TimeMachineScreen(
                     .iosInsetGroupedCard(uiState.reduceGlass)
                     .clickable { viewModel.applyTimeMachinePreset(preset) }
                     .border(
-                        if (isActive) 1.2.dp else 0.8.dp,
+                        1.2.dp,
                         if (isActive) GlassTokens.IosBlue else GlassTokens.IosSeparator,
                         GlassTokens.radiusLg
                     )
@@ -245,13 +248,17 @@ fun TimeMachineScreen(
                                 text = preset.eraTitle,
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (isActive) GlassTokens.IosBlue else GlassTokens.TextPrimary
+                                color = if (isActive) GlassTokens.IosBlue else GlassTokens.TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = preset.subtitle,
                                 fontSize = 12.sp,
                                 color = if (isActive) GlassTokens.IosBlue.copy(alpha = 0.85f) else GlassTokens.TextSecondary,
-                                modifier = Modifier.padding(top = 1.dp)
+                                modifier = Modifier.padding(top = 1.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
@@ -274,7 +281,9 @@ fun TimeMachineScreen(
                                         text = "ACTIVE",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -287,7 +296,9 @@ fun TimeMachineScreen(
                         text = preset.description,
                         fontSize = 13.sp,
                         color = GlassTokens.TextSecondary,
-                        lineHeight = 17.sp
+                        lineHeight = 17.sp,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
                     )
 
                     val isVinylEra = preset.id == "60s_mono" || preset.id.contains("vinyl")
@@ -312,7 +323,9 @@ fun TimeMachineScreen(
 
                     // Badges summarizing preset settings (Apple Inset Capsules)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         if (preset.hissRemoval > 0f) {
@@ -473,7 +486,10 @@ fun MemoryPostcardDialog(
                             text = activePresetName,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            color = GlassTokens.TextPrimary
+                            color = GlassTokens.TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
                         )
 
                         Text(
@@ -505,7 +521,9 @@ fun MemoryPostcardDialog(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             PresetBadge(text = "Warble: ${uiState.wowFlutterDepth.toInt()}%")
                             PresetBadge(text = "Noise: ${uiState.vintageNoiseLevel.toInt()}%")
@@ -549,7 +567,9 @@ private fun PresetBadge(text: String) {
             text = text,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            color = GlassTokens.TextSecondary
+            color = GlassTokens.TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

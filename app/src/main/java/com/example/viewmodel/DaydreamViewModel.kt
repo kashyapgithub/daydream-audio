@@ -205,6 +205,34 @@ data class DaydreamUiState(
     val transientAttackActivity: Float = 0f,
     val transientSustainActivity: Float = 0f,
 
+    // Pillar 2: measured compressor gain reduction from the DSP loop.
+    val measuredGrDb: Float = 0f,
+
+    // Pro Studio 3-band multiband compressor (player-only DSP).
+    val multibandEnabled: Boolean = false,
+    val mbXoverLowHz: Float = 250f,
+    val mbXoverHighHz: Float = 4000f,
+    val mbThreshLowDb: Float = -18f,
+    val mbThreshMidDb: Float = -18f,
+    val mbThreshHighDb: Float = -18f,
+    val mbRatioLow: Float = 2f,
+    val mbRatioMid: Float = 2f,
+    val mbRatioHigh: Float = 2f,
+    val mbAttackMs: Float = 20f,
+    val mbReleaseMs: Float = 150f,
+    val mbKneeDb: Float = 6f,
+    val mbSidechainHpfHz: Int = 0,
+    val mbSoloLow: Boolean = false,
+    val mbSoloMid: Boolean = false,
+    val mbSoloHigh: Boolean = false,
+    val mbGrLowDb: Float = 0f,
+    val mbGrMidDb: Float = 0f,
+    val mbGrHighDb: Float = 0f,
+
+    // Engine processing rate (pillar: 44.1/48kHz agility).
+    val sampleRateMode: com.example.model.SampleRateMode = com.example.model.SampleRateMode.AUTO,
+    val effectiveSampleRateHz: Int = 44100,
+
     // Pro Studio Analog Harmonic Saturation Color Topology
     val harmonicSaturationType: HarmonicSaturationType = HarmonicSaturationType.CLEAN,
     val harmonicDrivePercent: Float = 0f,
@@ -267,7 +295,23 @@ data class DaydreamUiState(
     val isExternalPlaybackActive: Boolean = false,
     val playbackPositionMs: Long = 0L,
     val playbackDurationMs: Long = 0L,
-    val isImportingTrack: Boolean = false
+    val isImportingTrack: Boolean = false,
+
+    // Pro Studio workflow: A/B/C/D mix snapshots, undo depth, QC peak-hold,
+    // offline bounce export with loudness auto-match.
+    val mixSnapshots: List<com.example.model.MixSnapshot?> = List(4) { null },
+    val activeSnapshotIndex: Int = -1,
+    val canUndoMix: Boolean = false,
+    val truePeakHoldDbtp: Float = -90f,
+    val clipCount: Int = 0,
+    val isBouncing: Boolean = false,
+    val lastBouncePath: String? = null,
+    val lastBounceGainDb: Float = 0f,
+    val lastBouncePeakDbtp: Float = -90f,
+    // Pillar 1: real track bounce output options + verify readout.
+    val bounceBitDepth: com.example.audio.BounceBitDepth = com.example.audio.BounceBitDepth.PCM_16,
+    val bounceProgress: Float? = null, // 0..1 while rendering, null when idle
+    val bounceVerifyText: String? = null
 )
 
 class DaydreamViewModel(application: Application) : AndroidViewModel(application) {
@@ -291,6 +335,95 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     private var preLofiVintageMode = false
     private var preLofiWowDepth = 0f
     private var preLofiVintageNoise = 0f
+
+    // Pro Studio undo stack (up to 20 full-chain snapshots)
+    private val mixUndoStack = ArrayDeque<com.example.model.MixSnapshot>()
+
+    private fun pushMixUndo(label: String = "Mix change") {
+        try {
+            mixUndoStack.addLast(audioEngine.captureSnapshot(label))
+            while (mixUndoStack.size > com.example.model.MixSnapshot.MAX_UNDO) {
+                mixUndoStack.removeFirst()
+            }
+            _uiState.update { it.copy(canUndoMix = true) }
+        } catch (_: Exception) { }
+    }
+
+    private fun snapshotToUi(s: com.example.model.MixSnapshot): DaydreamUiState {
+        val cur = _uiState.value
+        val eq = cur.eqGains.toMutableMap()
+        s.eqGains.forEach { (k, v) ->
+            runCatching { eq[PlainBand.valueOf(k)] = v }
+        }
+        val adv = cur.advancedBands.map { b ->
+            val g = s.parametricGains[b.hz.toString()] ?: b.gainDb
+            val q = s.parametricQ[b.hz.toString()] ?: b.q
+            b.copy(gainDb = g, q = q)
+        }
+        return cur.copy(
+            eqGains = eq,
+            advancedBands = adv,
+            spacePercent = s.spacePercent,
+            punchPercent = s.punchPercent,
+            clarityMacroPercent = s.clarityMacroPercent,
+            loudnessPercent = s.loudnessPercent,
+            hissRemovalPercent = s.hissRemovalPercent,
+            deHumEnabled = s.deHumEnabled,
+            humFrequency = s.humFrequency,
+            deCrackleEnabled = s.deCrackleEnabled,
+            compThresholdDb = s.compThresholdDb,
+            compRatio = s.compRatio,
+            compAttackMs = s.compAttackMs,
+            compReleaseMs = s.compReleaseMs,
+            limiterCeilingDb = s.limiterCeilingDb,
+            reverbWetPercent = s.reverbWetPercent,
+            reverbRoomSizePercent = s.reverbRoomSizePercent,
+            reverbDampingPercent = s.reverbDampingPercent,
+            reverbFreezeEnabled = s.reverbFreezeEnabled,
+            echoTimeMs = s.echoTimeMs,
+            echoFeedbackPercent = s.echoFeedbackPercent,
+            echoWetPercent = s.echoWetPercent,
+            roomSize = runCatching { com.example.audio.AudioEngine.RoomSize.valueOf(s.roomSizeName) }.getOrDefault(cur.roomSize),
+            wallMaterial = runCatching { com.example.audio.AudioEngine.WallMaterial.valueOf(s.wallMaterialName) }.getOrDefault(cur.wallMaterial),
+            midSideMode = runCatching { MidSideMode.valueOf(s.midSideName) }.getOrDefault(cur.midSideMode),
+            bassMonoMakerEnabled = s.bassMonoMakerEnabled,
+            referenceMonitor = runCatching { ReferenceMonitor.valueOf(s.referenceMonitorName) }.getOrDefault(cur.referenceMonitor),
+            limiterMode = runCatching { LimiterMode.valueOf(s.limiterModeName) }.getOrDefault(cur.limiterMode),
+            transientAttackPercent = s.transientAttackPercent,
+            transientSustainPercent = s.transientSustainPercent,
+            harmonicSaturationType = runCatching { com.example.model.HarmonicSaturationType.valueOf(s.harmonicSaturationName) }.getOrDefault(cur.harmonicSaturationType),
+            harmonicDrivePercent = s.harmonicDrivePercent,
+            fletcherMunsonEnabled = s.fletcherMunsonEnabled,
+            subCutFilter = runCatching { SubCutFilter.valueOf(s.subCutName) }.getOrDefault(cur.subCutFilter),
+            deEsserEnabled = s.deEsserEnabled,
+            deEsserThresholdDb = s.deEsserThresholdDb,
+            deEsserMaxReductionDb = s.deEsserMaxReductionDb,
+            stereoBalanceTrimDb = s.stereoBalanceTrimDb,
+            invertLeftPolarity = s.invertLeftPolarity,
+            invertRightPolarity = s.invertRightPolarity,
+            multibandEnabled = s.multibandEnabled,
+            mbXoverLowHz = s.mbXoverLowHz,
+            mbXoverHighHz = s.mbXoverHighHz,
+            mbThreshLowDb = s.mbThreshLowDb,
+            mbThreshMidDb = s.mbThreshMidDb,
+            mbThreshHighDb = s.mbThreshHighDb,
+            mbRatioLow = s.mbRatioLow,
+            mbRatioMid = s.mbRatioMid,
+            mbRatioHigh = s.mbRatioHigh,
+            mbAttackMs = s.mbAttackMs,
+            mbReleaseMs = s.mbReleaseMs,
+            mbKneeDb = s.mbKneeDb,
+            mbSidechainHpfHz = s.mbSidechainHpfHz,
+            mbSoloLow = s.mbSoloLow,
+            mbSoloMid = s.mbSoloMid,
+            mbSoloHigh = s.mbSoloHigh,
+            playbackSpeed = s.playbackSpeed,
+            varispeedMode = s.varispeedMode,
+            isVintageMode = s.isVintageMode,
+            wowFlutterDepth = s.wowFlutterDepth,
+            vintageNoiseLevel = s.vintageNoiseLevel
+        )
+    }
 
     private val _uiState = MutableStateFlow(
         DaydreamUiState(
@@ -397,6 +530,18 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             _uiState.update { it.copy(thdPercent = thd) }
         }
 
+        audioEngine.onGrDbUpdated = { grDb ->
+            _uiState.update { it.copy(measuredGrDb = grDb) }
+        }
+
+        audioEngine.onMbGrUpdated = { lowDb, midDb, highDb ->
+            _uiState.update { it.copy(mbGrLowDb = lowDb, mbGrMidDb = midDb, mbGrHighDb = highDb) }
+        }
+
+        audioEngine.onPeakHoldUpdated = { hold, clips ->
+            _uiState.update { it.copy(truePeakHoldDbtp = hold, clipCount = clips) }
+        }
+
         // Listen for hardware output device changes (PRD FR-10)
         viewModelScope.launch {
             deviceManager.currentDevice.collect { device ->
@@ -448,10 +593,13 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             }
         }
 
-        // Coroutine for external audio monitoring and responsive visualizer animation
+        // Coroutine for external audio presence detection.
+        // Honest limitation: Android offers no public API to capture another app's
+        // PCM without privileged capture, so there is no real spectrum/RMS for
+        // external audio. We only flip the presence flag and let the last real
+        // in-app meter values decay to idle - never fabricate dancing bars.
         val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         viewModelScope.launch {
-            var tick = 0
             while (isActive) {
                 val internalPlaying = audioEngine.isCurrentlyPlaying()
                 val extActive = !internalPlaying && (audioManager?.isMusicActive == true || _uiState.value.activeSystemSessions.isNotEmpty())
@@ -459,31 +607,23 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     _uiState.update { it.copy(isExternalPlaybackActive = extActive) }
                 }
                 if (extActive) {
-                    tick++
-                    val bassPulse = (0.42f + 0.38f * kotlin.math.sin(tick * 0.45).toFloat().coerceAtLeast(0f)).coerceIn(0.1f, 1f)
-                    val midPulse = (0.32f + 0.28f * kotlin.math.cos(tick * 0.35).toFloat().coerceAtLeast(0f)).coerceIn(0.1f, 1f)
-                    val treblePulse = (0.25f + 0.25f * kotlin.math.sin(tick * 0.6).toFloat().coerceAtLeast(0f)).coerceIn(0.1f, 1f)
-                    val rms = (0.35f + bassPulse * 0.3f).coerceIn(0.2f, 0.85f)
-                    val extSpectrum = floatArrayOf(
-                        (bassPulse * 0.95f).coerceIn(0.1f, 1f),
-                        (bassPulse * 0.85f).coerceIn(0.1f, 1f),
-                        (midPulse * 0.80f).coerceIn(0.1f, 1f),
-                        (midPulse * 0.90f).coerceIn(0.1f, 1f),
-                        (midPulse * 0.75f).coerceIn(0.1f, 1f),
-                        (treblePulse * 0.85f).coerceIn(0.1f, 1f),
-                        (treblePulse * 0.70f).coerceIn(0.1f, 1f),
-                        (treblePulse * 0.60f).coerceIn(0.1f, 1f)
-                    )
                     _uiState.update {
+                        val decayed = FloatArray(8) { i ->
+                            (it.spectrum.getOrElse(i) { 0.1f } * 0.92f).coerceIn(0.04f, 1f)
+                        }
                         it.copy(
-                            spectrum = extSpectrum,
-                            audioRms = rms
+                            spectrum = decayed,
+                            audioRms = (it.audioRms * 0.92f).coerceIn(0.03f, 1f)
                         )
                     }
                 }
-                delay(120)
+                delay(250)
             }
         }
+
+        // Pillar: resolve the engine rate from the device's native output.
+        // Applied while idle in init; later changes stop playback first.
+        applySampleRateMode(_uiState.value.sampleRateMode, silent = true)
 
         syncAllEngineParameters()
     }
@@ -908,6 +1048,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
 
     fun setReferenceMonitor(monitor: ReferenceMonitor) {
         audioEngine.referenceMonitor = monitor
+        audioEngine.updateDspCoefficients()
         _uiState.update { it.copy(referenceMonitor = monitor) }
     }
 
@@ -973,6 +1114,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
 
     fun setSubCutFilter(filter: SubCutFilter) {
         audioEngine.subCutFilter = filter
+        audioEngine.updateDspCoefficients()
         _uiState.update { it.copy(subCutFilter = filter) }
     }
 
@@ -1001,6 +1143,101 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
     fun setStreamingTarget(target: StreamingTarget) {
         audioEngine.streamingTarget = target
         _uiState.update { it.copy(streamingTarget = target) }
+    }
+
+    // Pro Studio 3-band multiband compressor setters (player-only DSP stage).
+    fun setMultibandEnabled(enabled: Boolean) {
+        audioEngine.multibandEnabled = enabled
+        _uiState.update { it.copy(multibandEnabled = enabled) }
+    }
+
+    fun setMbXoverLowHz(hz: Float) {
+        val clamped = hz.coerceIn(60f, 800f)
+        audioEngine.mbXoverLowHz = clamped
+        audioEngine.updateDspCoefficients()
+        _uiState.update { it.copy(mbXoverLowHz = clamped) }
+    }
+
+    fun setMbXoverHighHz(hz: Float) {
+        val clamped = hz.coerceIn(1000f, 12000f)
+        audioEngine.mbXoverHighHz = clamped
+        audioEngine.updateDspCoefficients()
+        _uiState.update { it.copy(mbXoverHighHz = clamped) }
+    }
+
+    fun setMbThreshDb(band: Int, threshDb: Float) {
+        val clamped = threshDb.coerceIn(-40f, 0f)
+        when (band.coerceIn(0, 2)) {
+            0 -> audioEngine.mbThreshLowDb = clamped
+            1 -> audioEngine.mbThreshMidDb = clamped
+            else -> audioEngine.mbThreshHighDb = clamped
+        }
+        _uiState.update {
+            when (band.coerceIn(0, 2)) {
+                0 -> it.copy(mbThreshLowDb = clamped)
+                1 -> it.copy(mbThreshMidDb = clamped)
+                else -> it.copy(mbThreshHighDb = clamped)
+            }
+        }
+    }
+
+    fun setMbRatio(band: Int, ratio: Float) {
+        val clamped = ratio.coerceIn(1f, 10f)
+        when (band.coerceIn(0, 2)) {
+            0 -> audioEngine.mbRatioLow = clamped
+            1 -> audioEngine.mbRatioMid = clamped
+            else -> audioEngine.mbRatioHigh = clamped
+        }
+        _uiState.update {
+            when (band.coerceIn(0, 2)) {
+                0 -> it.copy(mbRatioLow = clamped)
+                1 -> it.copy(mbRatioMid = clamped)
+                else -> it.copy(mbRatioHigh = clamped)
+            }
+        }
+    }
+
+    fun setMbAttackMs(attackMs: Float) {
+        val clamped = attackMs.coerceIn(1f, 100f)
+        audioEngine.mbAttackMs = clamped
+        _uiState.update { it.copy(mbAttackMs = clamped) }
+    }
+
+    fun setMbReleaseMs(releaseMs: Float) {
+        val clamped = releaseMs.coerceIn(10f, 500f)
+        audioEngine.mbReleaseMs = clamped
+        _uiState.update { it.copy(mbReleaseMs = clamped) }
+    }
+
+    fun setMbKneeDb(kneeDb: Float) {
+        val clamped = kneeDb.coerceIn(0f, 12f)
+        audioEngine.mbKneeDb = clamped
+        _uiState.update { it.copy(mbKneeDb = clamped) }
+    }
+
+    fun setMbSidechainHpfHz(hz: Int) {
+        val clamped = when (hz) {
+            80, 150 -> hz
+            else -> 0
+        }
+        audioEngine.mbSidechainHpfHz = clamped
+        audioEngine.updateDspCoefficients()
+        _uiState.update { it.copy(mbSidechainHpfHz = clamped) }
+    }
+
+    fun setMbSolo(band: Int, solo: Boolean) {
+        when (band.coerceIn(0, 2)) {
+            0 -> audioEngine.mbSoloLow = solo
+            1 -> audioEngine.mbSoloMid = solo
+            else -> audioEngine.mbSoloHigh = solo
+        }
+        _uiState.update {
+            when (band.coerceIn(0, 2)) {
+                0 -> it.copy(mbSoloLow = solo)
+                1 -> it.copy(mbSoloMid = solo)
+                else -> it.copy(mbSoloHigh = solo)
+            }
+        }
     }
 
     fun setStereoBalanceTrimDb(trimDb: Float) {
@@ -1513,6 +1750,22 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             put("harmonicSaturationType", s.harmonicSaturationType.name)
             put("harmonicDrivePercent", s.harmonicDrivePercent)
             put("fletcherMunsonEnabled", s.fletcherMunsonEnabled)
+            put("multibandEnabled", s.multibandEnabled)
+            put("mbXoverLowHz", s.mbXoverLowHz)
+            put("mbXoverHighHz", s.mbXoverHighHz)
+            put("mbThreshLowDb", s.mbThreshLowDb)
+            put("mbThreshMidDb", s.mbThreshMidDb)
+            put("mbThreshHighDb", s.mbThreshHighDb)
+            put("mbRatioLow", s.mbRatioLow)
+            put("mbRatioMid", s.mbRatioMid)
+            put("mbRatioHigh", s.mbRatioHigh)
+            put("mbAttackMs", s.mbAttackMs)
+            put("mbReleaseMs", s.mbReleaseMs)
+            put("mbKneeDb", s.mbKneeDb)
+            put("mbSidechainHpfHz", s.mbSidechainHpfHz)
+            put("mbSoloLow", s.mbSoloLow)
+            put("mbSoloMid", s.mbSoloMid)
+            put("mbSoloHigh", s.mbSoloHigh)
         }
         return json.toString(2)
     }
@@ -1555,6 +1808,18 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         sb.appendLine("  • Attack Time:   ${String.format(java.util.Locale.US, "%.1f", s.compAttackMs)} ms")
         sb.appendLine("  • Release Time:  ${String.format(java.util.Locale.US, "%.1f", s.compReleaseMs)} ms")
         sb.appendLine("  • Auto Makeup:   +${String.format(java.util.Locale.US, "%.1f", -s.compThresholdDb * 0.35f)} dB")
+        sb.appendLine()
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("2b. MULTIBAND COMPRESSOR (FabFilter Pro-MB style, player-only)")
+        sb.appendLine("---------------------------------------------------------")
+        sb.appendLine("  • Engaged:       ${if (s.multibandEnabled) "YES" else "BYPASSED"}")
+        sb.appendLine("  • Crossovers:    LR4 ${s.mbXoverLowHz.toInt()} Hz / ${s.mbXoverHighHz.toInt()} Hz")
+        sb.appendLine("  • Low Band:      Thr ${String.format(java.util.Locale.US, "%.1f", s.mbThreshLowDb)} dBFS, Ratio ${String.format(java.util.Locale.US, "%.1f:1", s.mbRatioLow)}")
+        sb.appendLine("  • Mid Band:      Thr ${String.format(java.util.Locale.US, "%.1f", s.mbThreshMidDb)} dBFS, Ratio ${String.format(java.util.Locale.US, "%.1f:1", s.mbRatioMid)}")
+        sb.appendLine("  • High Band:     Thr ${String.format(java.util.Locale.US, "%.1f", s.mbThreshHighDb)} dBFS, Ratio ${String.format(java.util.Locale.US, "%.1f:1", s.mbRatioHigh)}")
+        sb.appendLine("  • Attack/Release:${String.format(java.util.Locale.US, "%.1f", s.mbAttackMs)} ms / ${String.format(java.util.Locale.US, "%.0f", s.mbReleaseMs)} ms (linked)")
+        sb.appendLine("  • Knee:          ${String.format(java.util.Locale.US, "%.1f", s.mbKneeDb)} dB (${if (s.mbKneeDb < 0.5f) "hard" else "soft"})")
+        sb.appendLine("  • Sidechain HPF: ${if (s.mbSidechainHpfHz <= 0) "Off" else "${s.mbSidechainHpfHz} Hz"}")
         sb.appendLine()
         sb.appendLine("---------------------------------------------------------")
         sb.appendLine("3. DYNAMIC TRANSIENT DESIGNER (SPL / Oxford TransMod)")
@@ -1685,6 +1950,22 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             val limMode = runCatching { LimiterMode.valueOf(json.optString("limiterMode")) }.getOrDefault(LimiterMode.SOFT_BRICKWALL)
             val tapeDrive = json.optDouble("tapeDrivePercent", 0.0).toFloat()
             val revFreeze = json.optBoolean("reverbFreezeEnabled", false)
+            val mbEnabled = json.optBoolean("multibandEnabled", false)
+            val mbXoLow = json.optDouble("mbXoverLowHz", 250.0).toFloat()
+            val mbXoHigh = json.optDouble("mbXoverHighHz", 4000.0).toFloat()
+            val mbThL = json.optDouble("mbThreshLowDb", -18.0).toFloat()
+            val mbThM = json.optDouble("mbThreshMidDb", -18.0).toFloat()
+            val mbThH = json.optDouble("mbThreshHighDb", -18.0).toFloat()
+            val mbRaL = json.optDouble("mbRatioLow", 2.0).toFloat()
+            val mbRaM = json.optDouble("mbRatioMid", 2.0).toFloat()
+            val mbRaH = json.optDouble("mbRatioHigh", 2.0).toFloat()
+            val mbAtk = json.optDouble("mbAttackMs", 20.0).toFloat()
+            val mbRel = json.optDouble("mbReleaseMs", 150.0).toFloat()
+            val mbKnee = json.optDouble("mbKneeDb", 6.0).toFloat()
+            val mbSc = json.optInt("mbSidechainHpfHz", 0)
+            val mbSoL = json.optBoolean("mbSoloLow", false)
+            val mbSoM = json.optBoolean("mbSoloMid", false)
+            val mbSoH = json.optBoolean("mbSoloHigh", false)
 
             audioEngine.eqGains.putAll(importedEq)
             systemEffects.updatePlainEqGains(importedEq)
@@ -1732,6 +2013,22 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             )
             audioEngine.varispeedMode = varispeed
             audioEngine.setPlaybackSpeed(speed)
+            audioEngine.multibandEnabled = mbEnabled
+            audioEngine.mbXoverLowHz = mbXoLow
+            audioEngine.mbXoverHighHz = mbXoHigh
+            audioEngine.mbThreshLowDb = mbThL
+            audioEngine.mbThreshMidDb = mbThM
+            audioEngine.mbThreshHighDb = mbThH
+            audioEngine.mbRatioLow = mbRaL
+            audioEngine.mbRatioMid = mbRaM
+            audioEngine.mbRatioHigh = mbRaH
+            audioEngine.mbAttackMs = mbAtk
+            audioEngine.mbReleaseMs = mbRel
+            audioEngine.mbKneeDb = mbKnee
+            audioEngine.mbSidechainHpfHz = mbSc
+            audioEngine.mbSoloLow = mbSoL
+            audioEngine.mbSoloMid = mbSoM
+            audioEngine.mbSoloHigh = mbSoH
             audioEngine.updateDspCoefficients()
 
             _uiState.update {
@@ -1765,6 +2062,22 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
                     referenceMonitor = refMon,
                     limiterMode = limMode,
                     tapeDrivePercent = tapeDrive,
+                    multibandEnabled = mbEnabled,
+                    mbXoverLowHz = mbXoLow,
+                    mbXoverHighHz = mbXoHigh,
+                    mbThreshLowDb = mbThL,
+                    mbThreshMidDb = mbThM,
+                    mbThreshHighDb = mbThH,
+                    mbRatioLow = mbRaL,
+                    mbRatioMid = mbRaM,
+                    mbRatioHigh = mbRaH,
+                    mbAttackMs = mbAtk,
+                    mbReleaseMs = mbRel,
+                    mbKneeDb = mbKnee,
+                    mbSidechainHpfHz = mbSc,
+                    mbSoloLow = mbSoL,
+                    mbSoloMid = mbSoM,
+                    mbSoloHigh = mbSoH,
                     notificationMessage = "Preset imported successfully!"
                 )
             }
@@ -1876,6 +2189,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         audioEngine.varispeedMode = true
         audioEngine.setPlaybackSpeed(1.0f)
         systemEffects.updateReverb(0f, 75f, 35f, 320, 0f)
+        audioEngine.updateDspCoefficients()
 
         _uiState.update {
             it.copy(
@@ -2013,7 +2327,310 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         )
         audioEngine.varispeedMode = s.varispeedMode
         audioEngine.setPlaybackSpeed(s.playbackSpeed)
+        audioEngine.multibandEnabled = s.multibandEnabled
+        audioEngine.mbXoverLowHz = s.mbXoverLowHz
+        audioEngine.mbXoverHighHz = s.mbXoverHighHz
+        audioEngine.mbThreshLowDb = s.mbThreshLowDb
+        audioEngine.mbThreshMidDb = s.mbThreshMidDb
+        audioEngine.mbThreshHighDb = s.mbThreshHighDb
+        audioEngine.mbRatioLow = s.mbRatioLow
+        audioEngine.mbRatioMid = s.mbRatioMid
+        audioEngine.mbRatioHigh = s.mbRatioHigh
+        audioEngine.mbAttackMs = s.mbAttackMs
+        audioEngine.mbReleaseMs = s.mbReleaseMs
+        audioEngine.mbKneeDb = s.mbKneeDb
+        audioEngine.mbSidechainHpfHz = s.mbSidechainHpfHz
+        audioEngine.mbSoloLow = s.mbSoloLow
+        audioEngine.mbSoloMid = s.mbSoloMid
+        audioEngine.mbSoloHigh = s.mbSoloHigh
         audioEngine.updateDspCoefficients()
+    }
+
+    // Pro Studio workflow: snapshots, undo, QC reset, loudness auto-match, offline bounce.
+    fun saveMixSnapshot(slot: Int, name: String? = null) {
+        val idx = slot.coerceIn(0, 3)
+        pushMixUndo("Before snapshot save")
+        val slotName = name?.takeIf { it.isNotBlank() } ?: listOf("A", "B", "C", "D")[idx]
+        val snap = audioEngine.captureSnapshot("Slot $slotName")
+        val updated = _uiState.value.mixSnapshots.toMutableList()
+        while (updated.size < 4) updated.add(null)
+        updated[idx] = snap.copy(name = "Slot $slotName")
+        _uiState.update {
+            it.copy(
+                mixSnapshots = updated,
+                activeSnapshotIndex = idx,
+                notificationMessage = "Snapshot $slotName saved — full chain recalled instantly"
+            )
+        }
+    }
+
+    fun recallMixSnapshot(slot: Int) {
+        val idx = slot.coerceIn(0, 3)
+        val snap = _uiState.value.mixSnapshots.getOrNull(idx) ?: run {
+            _uiState.update { it.copy(notificationMessage = "Snapshot slot empty — save first") }
+            return
+        }
+        pushMixUndo("Before recall ${snap.name}")
+        audioEngine.restoreSnapshot(snap)
+        val mapped = snapshotToUi(snap)
+        // Push engine-side parametric + system effects to stay in sync
+        systemEffects.updatePlainEqGains(mapped.eqGains)
+        systemEffects.updateDynamicsCompressor(
+            thresholdDb = mapped.compThresholdDb,
+            ratio = mapped.compRatio,
+            attackMs = mapped.compAttackMs,
+            releaseMs = mapped.compReleaseMs
+        )
+        systemEffects.updateReverb(
+            wetPercent = mapped.reverbWetPercent,
+            roomSizePercent = mapped.reverbRoomSizePercent,
+            dampingPercent = mapped.reverbDampingPercent,
+            echoTimeMs = mapped.echoTimeMs,
+            echoWetPercent = mapped.echoWetPercent,
+            echoFeedbackPercent = mapped.echoFeedbackPercent
+        )
+        _uiState.update {
+            mapped.copy(
+                mixSnapshots = it.mixSnapshots,
+                activeSnapshotIndex = idx,
+                canUndoMix = true,
+                notificationMessage = "Recalled ${snap.name} — instant A/B/C/D compare"
+            )
+        }
+    }
+
+    fun clearMixSnapshot(slot: Int) {
+        val idx = slot.coerceIn(0, 3)
+        val updated = _uiState.value.mixSnapshots.toMutableList()
+        while (updated.size < 4) updated.add(null)
+        updated[idx] = null
+        _uiState.update { it.copy(mixSnapshots = updated, activeSnapshotIndex = -1) }
+    }
+
+    fun undoMixChange() {
+        val prev = mixUndoStack.removeLastOrNull() ?: run {
+            _uiState.update { it.copy(notificationMessage = "Nothing to undo") }
+            return
+        }
+        audioEngine.restoreSnapshot(prev)
+        val mapped = snapshotToUi(prev)
+        _uiState.update {
+            mapped.copy(
+                mixSnapshots = it.mixSnapshots,
+                activeSnapshotIndex = it.activeSnapshotIndex,
+                canUndoMix = mixUndoStack.isNotEmpty(),
+                notificationMessage = "Undone: restored ${prev.name}"
+            )
+        }
+    }
+
+    fun resetPeakHold() {
+        audioEngine.resetPeakHold()
+        _uiState.update { it.copy(truePeakHoldDbtp = -90f, clipCount = 0) }
+    }
+
+    fun loudnessAutoMatchGainDb(): Float {
+        val s = _uiState.value
+        return com.example.model.MixSnapshot.safeLoudnessGainDb(
+            currentIntegratedLufs = s.lufsMetrics.integratedLufs,
+            targetLufs = s.streamingTarget.targetLufs,
+            currentTruePeakDbtp = s.lufsMetrics.truePeakDbtp,
+            ceilingDbtp = s.streamingTarget.maxTruePeakDbtp
+        )
+    }
+
+    fun setBounceBitDepth(depth: com.example.audio.BounceBitDepth) {
+        _uiState.update { it.copy(bounceBitDepth = depth) }
+    }
+
+    private fun deviceNativeSampleRateHz(): Int {
+        return try {
+            val am = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            am?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()?.let {
+                if (it >= 48000) 48000 else 44100
+            } ?: 44100
+        } catch (_: Exception) {
+            44100
+        }
+    }
+
+    private fun resolveSampleRateHz(mode: com.example.model.SampleRateMode): Int {
+        return when (mode) {
+            com.example.model.SampleRateMode.RATE_48000 -> 48000
+            com.example.model.SampleRateMode.RATE_44100 -> 44100
+            com.example.model.SampleRateMode.AUTO -> deviceNativeSampleRateHz()
+        }
+    }
+
+    private fun applySampleRateMode(mode: com.example.model.SampleRateMode, silent: Boolean) {
+        val rate = resolveSampleRateHz(mode)
+        val wasPlaying = _uiState.value.isPlaying
+        if (wasPlaying) {
+            audioEngine.stopPlayback()
+        }
+        audioEngine.setEngineSampleRate(rate)
+        _uiState.update {
+            it.copy(
+                sampleRateMode = mode,
+                effectiveSampleRateHz = rate,
+                isPlaying = false,
+                notificationMessage = if (silent || !wasPlaying) {
+                    it.notificationMessage
+                } else {
+                    "Engine rate set to ${rate}Hz — press play to resume"
+                }
+            )
+        }
+    }
+
+    fun setSampleRateMode(mode: com.example.model.SampleRateMode) {
+        if (mode == _uiState.value.sampleRateMode) return
+        applySampleRateMode(mode, silent = false)
+    }
+
+    /**
+     * Offline bounce entry point. With a local track loaded this renders the
+     * ACTUAL song through the full chain (two-pass measure -> match -> print
+     * with verify). Without one it falls back to the 5s test-signal bounce
+     * used for auditioning the chain on demo synth. Runs on Dispatchers.IO.
+     */
+    fun bounceCurrentMixToWav(
+        context: Context,
+        applyLoudnessMatch: Boolean = true,
+        durationSeconds: Float = 5f
+    ) {
+        if (_uiState.value.isBouncing) return
+        val local = _uiState.value.currentLocalTrack
+        if (local != null) {
+            bounceLocalTrackToWav(context, applyLoudnessMatch)
+        } else {
+            bounceTestSignalToWav(context, applyLoudnessMatch, durationSeconds)
+        }
+    }
+
+    fun bounceLocalTrackToWav(context: Context, applyLoudnessMatch: Boolean = true) {
+        val track = _uiState.value.currentLocalTrack ?: run {
+            _uiState.update { it.copy(notificationMessage = "Load a track from the vault first") }
+            return
+        }
+        if (_uiState.value.isBouncing) return
+        val snapshot = audioEngine.captureSnapshot("bounce")
+        val advanced = _uiState.value.isAdvancedModeActive
+        val target = _uiState.value.streamingTarget
+        val depth = _uiState.value.bounceBitDepth
+        _uiState.update { it.copy(isBouncing = true, bounceProgress = 0f, bounceVerifyText = null) }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val source = com.example.audio.DecoderPcmSource(track.filePath)
+            try {
+                val safeTitle = track.title.replace("[^a-zA-Z0-9._-]".toRegex(), "_").take(40)
+                val dir = context.getExternalFilesDir(null) ?: context.filesDir
+                val file = java.io.File(dir, "daydream_bounce_${safeTitle}_${System.currentTimeMillis()}.wav")
+                val result = com.example.audio.TrackBounceRenderer.bounceTrack(
+                    source = source,
+                    snapshot = snapshot,
+                    isAdvancedParametricMode = advanced,
+                    target = target,
+                    bitDepth = depth,
+                    dither = com.example.audio.BounceDither.TPDF,
+                    applyLoudnessMatch = applyLoudnessMatch,
+                    outFile = file,
+                    onProgress = { p ->
+                        _uiState.update { it.copy(bounceProgress = p) }
+                    },
+                    sampleRateHz = _uiState.value.effectiveSampleRateHz
+                )
+                val verify = "Measured ${fmtLufs(result.measuredIntegratedLufs)} → " +
+                    "${fmtGain(result.appliedGainDb)} → landed ${fmtLufs(result.achievedIntegratedLufs)} " +
+                    "(target ${fmtLufs(result.targetLufs)}, Δ${fmtDelta(result.deltaToTargetLu)}, " +
+                    "peak ${fmtPeak(result.achievedTruePeakDbtp)}). Monitoring excluded."
+                _uiState.update {
+                    it.copy(
+                        isBouncing = false,
+                        bounceProgress = null,
+                        lastBouncePath = result.filePath,
+                        lastBounceGainDb = result.appliedGainDb,
+                        lastBouncePeakDbtp = result.achievedTruePeakDbtp,
+                        bounceVerifyText = verify,
+                        notificationMessage = "Bounced ${file.name} (${depth.bits}-bit/${result.sampleRateHz}Hz, Δ${fmtDelta(result.deltaToTargetLu)} to ${target.platform})"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isBouncing = false,
+                        bounceProgress = null,
+                        notificationMessage = "Track bounce failed: ${e.message}"
+                    )
+                }
+            } finally {
+                try {
+                    source.release()
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun fmtLufs(v: Float): String =
+        if (v <= -60f) "-∞ LUFS" else String.format(java.util.Locale.US, "%.1f LUFS", v)
+
+    private fun fmtGain(v: Float): String =
+        String.format(java.util.Locale.US, "%+.1f dB", v)
+
+    private fun fmtDelta(v: Float): String =
+        String.format(java.util.Locale.US, "%+.1f LU", v)
+
+    private fun fmtPeak(v: Float): String =
+        if (v <= -60f) "-∞ dBTP" else String.format(java.util.Locale.US, "%+.1f dBTP", v)
+
+    private fun bounceTestSignalToWav(
+        context: Context,
+        applyLoudnessMatch: Boolean = true,
+        durationSeconds: Float = 5f
+    ) {
+        if (_uiState.value.isBouncing) return
+        _uiState.update { it.copy(isBouncing = true, bounceProgress = null, bounceVerifyText = null) }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val seconds = durationSeconds.coerceIn(1f, 30f)
+                val n = (AudioEngine.SAMPLE_RATE * seconds).toInt()
+                val inL = DoubleArray(n)
+                val inR = DoubleArray(n)
+                // Deterministic studio test signal: 440Hz + 1kHz + transient click
+                for (i in 0 until n) {
+                    val t = i.toDouble() / AudioEngine.SAMPLE_RATE
+                    val tone = 0.35 * kotlin.math.sin(2.0 * kotlin.math.PI * 440.0 * t) +
+                        0.25 * kotlin.math.sin(2.0 * kotlin.math.PI * 1000.0 * t)
+                    val click = if (i % 22050 == 0) 0.5 else 0.0
+                    inL[i] = (tone + click).coerceIn(-0.9, 0.9)
+                    inR[i] = (tone * 0.9 + click).coerceIn(-0.9, 0.9)
+                }
+                val (outL, outR) = com.example.audio.OfflineBounceRenderer.renderOffline(inL, inR) { l, r ->
+                    audioEngine.processStereoSample(l, r)
+                }
+                var appliedGain = 0f
+                if (applyLoudnessMatch) {
+                    appliedGain = loudnessAutoMatchGainDb()
+                    com.example.audio.OfflineBounceRenderer.applyGainDb(outL, outR, appliedGain)
+                }
+                val peak = com.example.audio.OfflineBounceRenderer.peakDbtp(outL, outR)
+                val dir = context.getExternalFilesDir(null) ?: context.filesDir
+                val file = java.io.File(dir, "daydream_bounce_${System.currentTimeMillis()}.wav")
+                com.example.audio.OfflineBounceRenderer.writeWav16Bit(file, outL, outR)
+                _uiState.update {
+                    it.copy(
+                        isBouncing = false,
+                        lastBouncePath = file.absolutePath,
+                        lastBounceGainDb = appliedGain,
+                        lastBouncePeakDbtp = peak,
+                        notificationMessage = "Bounced WAV: ${file.name} (${String.format("%.1f", appliedGain)}dB match, peak ${String.format("%.1f", peak)}dBTP)"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isBouncing = false, notificationMessage = "Bounce failed: ${e.message}")
+                }
+            }
+        }
     }
 
     override fun onCleared() {
