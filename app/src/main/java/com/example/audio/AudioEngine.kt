@@ -610,13 +610,13 @@ class AudioEngine {
 
     fun getCurrentPositionMs(): Long {
         return if (isLocalTrackMode) {
-            localDecoder?.getCurrentPositionMs() ?: 0L
+            localDecoder?.currentPositionMs ?: 0L
         } else 0L
     }
 
     fun getDurationMs(): Long {
         return if (isLocalTrackMode) {
-            currentLocalTrack?.durationMs?.takeIf { it > 0 } ?: (localDecoder?.getDurationMs() ?: 0L)
+            currentLocalTrack?.durationMs?.takeIf { it > 0 } ?: (localDecoder?.durationMs ?: 0L)
         } else 0L
     }
 

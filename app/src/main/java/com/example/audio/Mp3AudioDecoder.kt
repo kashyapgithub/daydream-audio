@@ -187,10 +187,6 @@ class Mp3AudioDecoder(private val filePath: String) {
         return framesRead
     }
 
-    fun getCurrentPositionMs(): Long = currentPositionMs
-
-    fun getDurationMs(): Long = durationMs
-
     /**
      * Decodes frames from MediaCodec and writes to the ring buffer.
      */

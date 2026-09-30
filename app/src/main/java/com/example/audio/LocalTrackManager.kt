@@ -64,6 +64,7 @@ class LocalTrackManager(private val context: Context) {
                             filePath = filePath,
                             fileName = obj.optString("fileName", file.name),
                             fileSize = obj.optLong("fileSize", file.length()),
+                            bitrateKbps = obj.optInt("bitrateKbps", 0),
                             dateAdded = obj.optLong("dateAdded", System.currentTimeMillis())
                         )
                     )
@@ -125,6 +126,7 @@ class LocalTrackManager(private val context: Context) {
             var artist: String? = null
             var album: String? = null
             var durationMs: Long = 0L
+            var bitrateKbps: Int = 0
 
             val retriever = MediaMetadataRetriever()
             try {
@@ -133,6 +135,7 @@ class LocalTrackManager(private val context: Context) {
                 artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
                 album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
                 durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                bitrateKbps = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()?.let { it / 1000 } ?: 0
             } catch (e: Exception) {
                 Log.w(TAG, "MediaMetadataRetriever failed to read ID3 tags", e)
             } finally {
@@ -155,6 +158,7 @@ class LocalTrackManager(private val context: Context) {
                 filePath = targetFile.absolutePath,
                 fileName = originalName,
                 fileSize = actualSize,
+                bitrateKbps = bitrateKbps,
                 dateAdded = System.currentTimeMillis()
             )
 
@@ -208,6 +212,7 @@ class LocalTrackManager(private val context: Context) {
                 put("filePath", track.filePath)
                 put("fileName", track.fileName)
                 put("fileSize", track.fileSize)
+                put("bitrateKbps", track.bitrateKbps)
                 put("dateAdded", track.dateAdded)
             }
             jsonArray.put(obj)

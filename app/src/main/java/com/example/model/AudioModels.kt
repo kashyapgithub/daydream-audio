@@ -303,6 +303,7 @@ data class LocalTrack(
     val filePath: String,
     val fileName: String,
     val fileSize: Long = 0L,
+    val bitrateKbps: Int = 0,
     val dateAdded: Long = System.currentTimeMillis()
 ) {
     val formattedDuration: String
