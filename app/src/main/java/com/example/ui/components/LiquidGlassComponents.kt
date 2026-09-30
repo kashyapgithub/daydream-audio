@@ -538,7 +538,7 @@ fun LiquidSlider(
                                     activeColor,
                                     activeColor.copy(alpha = 0.95f)
                                 ),
-                                start = 0f,
+                                startX = 0f,
                                 endX = activeWidth
                             ),
                             size = Size(activeWidth, size.height),

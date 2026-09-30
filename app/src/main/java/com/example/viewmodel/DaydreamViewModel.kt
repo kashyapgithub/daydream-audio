@@ -1478,7 +1478,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
             s.eqGains.forEach { (band, gain) -> eqObj.put(band.name, gain) }
             put("eqGains", eqObj)
             val paramObj = JSONObject()
-            s.parametricBands.forEach { b -> paramObj.put(b.hz.toString(), b.gainDb) }
+            s.advancedBands.forEach { b -> paramObj.put(b.hz.toString(), b.gainDb) }
             put("parametricGains", paramObj)
             put("spacePercent", s.spacePercent)
             put("punchPercent", s.punchPercent)
@@ -1541,7 +1541,7 @@ class DaydreamViewModel(application: Application) : AndroidViewModel(application
         sb.appendLine("---------------------------------------------------------")
         sb.appendLine(String.format(java.util.Locale.US, "%-8s | %-10s | %-8s | %s", "BAND", "FREQUENCY", "GAIN", "Q FACTOR / ANCHOR"))
         sb.appendLine("---------|------------|----------|-----------------------")
-        s.parametricBands.forEach { b ->
+        s.advancedBands.forEach { b ->
             val sign = if (b.gainDb >= 0) "+" else ""
             sb.appendLine(String.format(java.util.Locale.US, "%-8s | %6d Hz  | %s%5.1f dB | Q = %.2f (%s)",
                 "${b.hz}Hz", b.hz, sign, b.gainDb, b.q, b.anchorLabel))

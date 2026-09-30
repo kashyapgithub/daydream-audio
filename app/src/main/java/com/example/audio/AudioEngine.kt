@@ -111,8 +111,17 @@ class AudioEngine {
         get() = reverbWet
         set(value) { reverbWet = value }
     var reverbRoomSize: Float = 75f // 0 to 100% - fine continuous control within the selected RoomSize category
+    var reverbRoomSizePercent: Float
+        get() = reverbRoomSize
+        set(value) { reverbRoomSize = value }
     var reverbDamping: Float = 35f // 0 to 100%
+    var reverbDampingPercent: Float
+        get() = reverbDamping
+        set(value) { reverbDamping = value }
     var reverbWidth: Float = 100f // 0 to 100%
+    var reverbWidthPercent: Float
+        get() = reverbWidth
+        set(value) { reverbWidth = value }
     var roomSize: RoomSize = RoomSize.LARGE_HALL // discrete character preset (PRD 6.15)
     var wallMaterial: WallMaterial = WallMaterial.PLASTER // discrete character preset (PRD 6.15)
 
@@ -122,6 +131,10 @@ class AudioEngine {
         get() = echoWet
         set(value) { echoWet = value }
     var echoTimeMs: Int = 320 // 50 to 3000 ms - widened for "a lot of echo" (PRD 6.17)
+    var echoFeedback: Float = 30f // 0 to 100% - near-infinite trailing echo at max
+    var echoFeedbackPercent: Float
+        get() = echoFeedback
+        set(value) { echoFeedback = value }
     var echoPingPong: Boolean = true
 
     // Pro Studio Reference Tools (Mastering & Mix Engineer Reference Suite)
@@ -1367,8 +1380,11 @@ class AudioEngine {
         // ==========================================
         // STAGE 10: STEREO TRIM & CHANNEL POLARITY
         // ==========================================
-        val trimL = 10.0.pow((-stereoBalanceTrimDb).coerceAtLeast(0f) / -20.0)
-        val trimR = 10.0.pow((+stereoBalanceTrimDb).coerceAtLeast(0f) / -20.0)
+        // Convention: negative trim biases LEFT (attenuates right),
+        // positive trim biases RIGHT (attenuates left). Only the
+        // attenuated side is scaled; the favoured side stays at unity.
+        val trimL = 10.0.pow((+stereoBalanceTrimDb).coerceAtLeast(0f) / -20.0)
+        val trimR = 10.0.pow((-stereoBalanceTrimDb).coerceAtLeast(0f) / -20.0)
         val s10L = s9L * trimL * (if (invertLeftPolarity) -1.0 else 1.0)
         val s10R = s9R * trimR * (if (invertRightPolarity) -1.0 else 1.0)
 
@@ -1389,6 +1405,16 @@ class AudioEngine {
     }
 
     private fun processDynamicsCompressor(inL: Double, inR: Double): Pair<Double, Double> {
+        // Punch at 0% means no compression: fully transparent (no gain
+        // reduction AND no makeup gain). Without this, the automatic
+        // makeup (+4.2dB at punch=0) would color the signal even when the
+        // user asked for zero dynamics processing.
+        if (!isAdvancedParametricMode && punchAmount <= 0.01f) {
+            return Pair(inL, inR)
+        }
+        if (isAdvancedParametricMode && compRatio <= 1.01f) {
+            return Pair(inL, inR)
+        }
         // RMS-based power detector (PRD 8.3: RMS, not pure peak)
         val power = (inL * inL + inR * inR) * 0.5
 

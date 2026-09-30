@@ -585,6 +585,16 @@ class AudioEngineTest {
     fun testHarmonicSaturationEvenAndOddHarmonics() {
         val testEngine = AudioEngine()
         testEngine.isBypassed.set(false)
+        // Isolate the saturation stage: neutralize all other processing
+        // so CLEAN mode measures as transparent unity gain.
+        testEngine.spaceAmount = 0f
+        testEngine.punchAmount = 0f
+        testEngine.loudnessBoost = 0f
+        testEngine.clarityMacroAmount = 0f
+        testEngine.hissRemoval = 0f
+        testEngine.reverbWet = 0f
+        testEngine.echoWet = 0f
+        testEngine.vintageMode = false
         testEngine.updateDspCoefficients()
 
         // 1. Clean mode: zero THD

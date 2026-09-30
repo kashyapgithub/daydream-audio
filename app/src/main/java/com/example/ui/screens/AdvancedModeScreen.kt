@@ -1308,8 +1308,8 @@ fun AdvancedModeScreen(
                         Button(
                             onClick = {
                                 val savedFile = viewModel.savePresetToFile(context, isDawSheet = (selectedFormatTab == 0))
-                                if (savedFile != null) {
-                                    Toast.makeText(context, "Saved to Downloads: ${savedFile.name}", Toast.LENGTH_LONG).show()
+                                if (savedFile.isNotEmpty()) {
+                                    Toast.makeText(context, "Saved to Downloads: ${savedFile.substringAfterLast('/')}", Toast.LENGTH_LONG).show()
                                 } else {
                                     Toast.makeText(context, "Could not write to Downloads", Toast.LENGTH_SHORT).show()
                                 }
